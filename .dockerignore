@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.log
+.env
+.venv/
+venv/
+.git/
+.gitignore
+.idea/
+.vscode/
+logs/
+start_server.bat
+start_server.ps1
+demo.py
+quick_test.py
