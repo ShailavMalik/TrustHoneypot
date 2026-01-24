@@ -1,0 +1,29 @@
+# Environments
+.env
+.env.*
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Editor/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and dumps
+logs/
+*.log
+
+# Local test and demo helpers
+demo.py
+quick_test.py
+start_server.bat
+start_server.ps1
