@@ -253,16 +253,6 @@ When ALL conditions met:
 
 System automatically sends final results to hackathon API.
 
----
-
-## Configuration
-
-### Environment Variables
-
-| Variable       | Description                   | Default                                                   |
-| -------------- | ----------------------------- | --------------------------------------------------------- |
-| `API_KEY`      | Secret key for authentication | `default-hackathon-key-2026`                              |
-| `CALLBACK_URL` | Hackathon evaluation endpoint | `https://hackathon.guvi.in/api/updateHoneyPotFinalResult` |
 
 ### Detection Thresholds
 
