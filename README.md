@@ -4,6 +4,9 @@
 
 Built for the **India AI Impact Buildathon (GUVI)** - Problem Statement 2
 
+🌐 **Live Deployment:** https://trust-honeypot.up.railway.app  
+📚 **API Documentation:** https://trust-honeypot.up.railway.app/docs
+
 ---
 
 ## Overview
@@ -123,21 +126,26 @@ honeypot-api/
 
 ## Running the API
 
-### Development Mode
+### Production Deployment (Railway)
+
+✅ **Live API:** https://trust-honeypot.up.railway.app  
+✅ **Interactive Docs:** https://trust-honeypot.up.railway.app/docs  
+✅ **Health Check:** https://trust-honeypot.up.railway.app/
+
+### Local Development Mode
 
 ```powershell
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Production Mode
+### Local Production Mode
 
 ```powershell
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-The API will be available at: `http://localhost:8000`
-
-API documentation: `http://localhost:8000/docs`
+Local API: `http://localhost:8000`  
+Local Docs: `http://localhost:8000/docs`
 
 ---
 
@@ -195,7 +203,29 @@ Response format:
 }
 ```
 
-### Example cURL
+### Example cURL (Production)
+
+```bash
+curl -X POST https://trust-honeypot.up.railway.app/honeypot \
+  -H "x-api-key: your-secret-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "test-session-001",
+    "message": {
+      "sender": "scammer",
+      "text": "Urgent: Your bank account is suspended. Verify at http://fake-bank.com",
+      "timestamp": "2026-01-24T10:30:00Z"
+    },
+    "conversationHistory": [],
+    "metadata": {
+      "channel": "SMS",
+      "language": "English",
+      "locale": "IN"
+    }
+  }'
+```
+
+### Example cURL (Local)
 
 ```bash
 curl -X POST http://localhost:8000/honeypot \
@@ -274,6 +304,14 @@ Customize response templates in [app/agent.py](app/agent.py):
 
 ### Health Check
 
+**Production:**
+
+```bash
+curl https://trust-honeypot.up.railway.app/
+```
+
+**Local:**
+
 ```bash
 curl http://localhost:8000/
 ```
@@ -318,6 +356,31 @@ Send multiple messages with the same `sessionId` to test:
 - Use HTTPS in production
 - Implement IP whitelisting if needed
 - Add monitoring and alerting
+
+---
+
+## Deployment
+
+### Railway Deployment (Current)
+
+The API is deployed on Railway and accessible at:
+
+- **Production URL:** https://trust-honeypot.up.railway.app
+- **API Documentation:** https://trust-honeypot.up.railway.app/docs
+- **Health Endpoint:** https://trust-honeypot.up.railway.app/
+
+#### Environment Variables on Railway:
+
+- `API_KEY` - Strong random key for authentication
+- `CALLBACK_URL` - GUVI evaluation endpoint (pre-configured)
+- `PORT` - Automatically set by Railway
+
+#### Deployment Process:
+
+1. Push code to GitHub
+2. Connect Railway to GitHub repository
+3. Railway auto-deploys on push to `main` branch
+4. Uses `Procfile` for configuration
 
 ---
 
