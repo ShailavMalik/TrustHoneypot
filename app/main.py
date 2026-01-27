@@ -98,7 +98,8 @@ async def process_message(
         session_id = request.sessionId
         current_message = request.message.text
         
-        logger.info(f"Session {session_id}: Received message from {request.message.sender}")
+        logger.info(f"[{session_id}] 📥 REQUEST: sender={request.message.sender}, msg='{current_message[:100]}...'")
+        logger.info(f"[{session_id}] History: {len(request.conversationHistory)} messages")
         
         # Process conversation history for context
         for hist_msg in request.conversationHistory:
@@ -110,11 +111,12 @@ async def process_message(
         
         # Analyze current message
         risk_score, is_scam = detector.calculate_risk_score(current_message, session_id)
-        logger.info(f"Session {session_id}: Risk score = {risk_score}, Scam = {is_scam}")
+        detection_details = detector.get_detection_details(session_id)
+        logger.info(f"[{session_id}] 🔍 DETECTION: score={risk_score}, scam={is_scam}, risk={detection_details.risk_level}, conf={detection_details.confidence:.0%}")
         
         if is_scam and not memory.is_scam_confirmed(session_id):
             memory.mark_scam_confirmed(session_id)
-            logger.info(f"Session {session_id}: Scam confirmed!")
+            logger.info(f"[{session_id}] ⚠️ SCAM CONFIRMED! Type: {detection_details.scam_type}")
         
         # Generate internal agent response (not returned to client)
         if memory.is_scam_confirmed(session_id):
@@ -122,9 +124,12 @@ async def process_message(
             internal_response = agent.generate_response(session_id, current_message, msg_count)
             memory.set_agent_response(session_id, internal_response)
             memory.add_message(session_id, "agent", internal_response)
+            logger.info(f"[{session_id}] 🤖 AGENT: '{internal_response[:80]}...'")
         
         # Extract intelligence
         intelligence = extractor.extract(current_message, session_id)
+        intel_summary = extractor.get_intelligence_summary(session_id)
+        logger.info(f"[{session_id}] 🔎 INTEL: {intel_summary}")
         
         # Calculate metrics using conversation history length + 1
         total_messages = len(request.conversationHistory) + 1
@@ -133,23 +138,28 @@ async def process_message(
         # Generate notes with enhanced detection details
         scam_confirmed = memory.is_scam_confirmed(session_id)
         if scam_confirmed:
-            detection_details = detector.get_detection_details(session_id)
             agent_notes = agent.generate_agent_notes(
                 session_id, total_messages, intelligence, detection_details
             )
         else:
             agent_notes = agent.generate_monitoring_notes(session_id, total_messages)
         
+        logger.info(f"[{session_id}] 📝 NOTES: {agent_notes}")
+        
         # Send callback if conditions met
+        callback_sent = False
         if should_send_callback(scam_confirmed, total_messages, intelligence):
             if not memory.is_callback_sent(session_id):
-                logger.info(f"Session {session_id}: Sending callback...")
+                logger.info(f"[{session_id}] 📞 CALLBACK: Attempting (scam={scam_confirmed}, msgs={total_messages}, intel={bool(intel_summary)})")
                 success = send_final_callback(session_id, total_messages, intelligence, agent_notes)
                 if success:
                     memory.mark_callback_sent(session_id)
-                    logger.info(f"Session {session_id}: Callback sent")
+                    callback_sent = True
+                    logger.info(f"[{session_id}] ✅ CALLBACK SUCCESS")
+                else:
+                    logger.error(f"[{session_id}] ❌ CALLBACK FAILED")
         
-        return HoneypotResponse(
+        response = HoneypotResponse(
             status="success",
             scamDetected=scam_confirmed,
             engagementMetrics=EngagementMetrics(
@@ -165,6 +175,10 @@ async def process_message(
             ),
             agentNotes=agent_notes
         )
+        
+        logger.info(f"[{session_id}] 📤 RESPONSE: status=success, scamDetected={scam_confirmed}, duration={duration_seconds}s, callback_sent={callback_sent}")
+        
+        return response
         
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}", exc_info=True)
