@@ -2,23 +2,32 @@
 Data models for the Honeypot API.
 Using Pydantic for validation - it catches bad data before it causes problems.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic import ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Union
 
 
 class Message(BaseModel):
-        """A single message in the conversation.
+    """A single message in the conversation.
     
-        Notes:
-        - Some external testers may omit `sender` in history items. We default to
-            'scammer' to be permissive and avoid 422s for missing keys.
-        - `sender` can be 'scammer' or 'agent' (we only act on 'scammer').
-        """
-        model_config = ConfigDict(extra="ignore")  # ignore unexpected fields
-        sender: Optional[str] = Field(default="scammer")  # default for leniency
-        text: str
-        timestamp: Optional[str] = None  # ISO-8601 format, optional for flexibility
+    Notes:
+    - Some external testers may omit `sender` in history items. We default to
+      'scammer' to be permissive and avoid 422s for missing keys.
+    - `sender` can be 'scammer' or 'agent' (we only act on 'scammer').
+    - `timestamp` can be int (Unix millis) or str (ISO-8601); we convert to str.
+    """
+    model_config = ConfigDict(extra="ignore")  # ignore unexpected fields
+    sender: Optional[str] = Field(default="scammer")  # default for leniency
+    text: str
+    timestamp: Optional[Union[str, int]] = None  # Accept both string and int
+    
+    @field_validator('timestamp', mode='before')
+    @classmethod
+    def convert_timestamp(cls, v):
+        """Convert numeric timestamps to string for consistency."""
+        if isinstance(v, (int, float)):
+            return str(int(v))
+        return v
 
 
 class Metadata(BaseModel):
