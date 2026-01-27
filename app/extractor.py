@@ -48,23 +48,12 @@ class IntelligenceExtractor:
         r'goo\.gl/[a-zA-Z0-9]+'
     ]
     
-    # Keywords that indicate scam tactics (from GUVI examples)
+    # Keywords that indicate scam tactics
     SUSPICIOUS_KEYWORDS = [
-        # Urgency
-        "urgent", "immediately", "verify now", "act now",
-        "account blocked", "account suspended",
-        # Verification scams
-        "verify account", "confirm details", "update kyc",
-        "reactivate", "unlock account",
-        # Payment scams
-        "refund pending", "claim reward", "won prize",
-        "lottery winner", "cashback", "prize money",
-        # Threats
-        "legal notice", "arrest warrant", "police case",
-        "fir registered", "cyber crime",
-        # Requests
-        "send otp", "share code", "bank details",
-        "upi pin", "cvv", "card number"
+        "urgent", "immediately", "verify", "blocked", "suspended",
+        "payment", "prize", "refund", "cashback", "kyc", "account",
+        "otp", "bank", "upi", "transfer", "lottery", "winner",
+        "legal", "police", "arrest", "confirm", "update"
     ]
     
     def __init__(self):
@@ -137,7 +126,7 @@ class IntelligenceExtractor:
             for url in matches:
                 data["phishingLinks"].add(url)
         
-        # Extract suspicious keywords
+        # Extract suspicious keywords (single words only, normalized)
         for keyword in self.SUSPICIOUS_KEYWORDS:
             if keyword in text_lower:
                 data["suspiciousKeywords"].add(keyword)

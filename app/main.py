@@ -47,6 +47,15 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Log essential startup information"""
+    logger.info("✅ API ready at http://127.0.0.1:8000")
+    logger.info("📚 Docs: http://127.0.0.1:8000/docs")
+    logger.info("🏥 Health: GET /")
+    logger.info("🍯 Honeypot: POST /honeypot")
+
+
 @app.get("/")
 async def health_check():
     """Simple health check - lets the platform know we're alive."""
@@ -62,83 +71,59 @@ async def process_message(
     request: HoneypotRequest,
     api_key: str = Depends(verify_api_key)
 ):
-    """
-    Main endpoint that receives and processes scam messages.
-    
-    The GUVI platform sends suspected scam messages here. We:
-    1. Analyze the message for scam indicators
-    2. If it looks like a scam, activate the agent to respond
-    3. Extract any useful intel (UPI IDs, phone numbers, etc.)
-    4. Send results to GUVI when we have enough evidence
-    5. Return a structured response with everything we found
-    """
+    """Process incoming scam messages and return analysis results."""
     try:
         session_id = request.sessionId
         current_message = request.message.text
         
         logger.info(f"Session {session_id}: Received message from {request.message.sender}")
         
-        # Process any conversation history first (for context)
-        # This helps us understand multi-turn conversations better
+        # Process conversation history for context
         for hist_msg in request.conversationHistory:
             if hist_msg.sender == "scammer":
-                # Run detection on historical messages too
                 detector.calculate_risk_score(hist_msg.text, session_id)
                 extractor.extract(hist_msg.text, session_id)
         
-        # Store this message in our session memory
         memory.add_message(session_id, "scammer", current_message)
         
-        # Analyze the current message for scam indicators
+        # Analyze current message
         risk_score, is_scam = detector.calculate_risk_score(current_message, session_id)
         logger.info(f"Session {session_id}: Risk score = {risk_score}, Scam = {is_scam}")
         
-        # Mark this session as a confirmed scam if we've crossed the threshold
         if is_scam and not memory.is_scam_confirmed(session_id):
             memory.mark_scam_confirmed(session_id)
             logger.info(f"Session {session_id}: Scam confirmed!")
         
-        # Generate agent response if this is a confirmed scam
-        agent_response = None
+        # Generate internal agent response (not returned to client)
         if memory.is_scam_confirmed(session_id):
             msg_count = memory.get_message_count(session_id)
-            agent_response = agent.generate_response(session_id, current_message, msg_count)
-            memory.set_agent_response(session_id, agent_response)
-            memory.add_message(session_id, "agent", agent_response)
-            logger.info(f"Session {session_id}: Agent replied - {agent_response[:50]}...")
+            internal_response = agent.generate_response(session_id, current_message, msg_count)
+            memory.set_agent_response(session_id, internal_response)
+            memory.add_message(session_id, "agent", internal_response)
         
-        # Extract intelligence from this message
+        # Extract intelligence
         intelligence = extractor.extract(current_message, session_id)
         
-        # Calculate engagement metrics
-        total_messages = memory.get_message_count(session_id)
+        # Calculate metrics using conversation history length + 1
+        total_messages = len(request.conversationHistory) + 1
         duration_seconds = memory.get_duration(session_id)
         
-        # Generate notes about the scammer's behavior
+        # Generate notes
         scam_confirmed = memory.is_scam_confirmed(session_id)
         if scam_confirmed:
             agent_notes = agent.generate_agent_notes(session_id, total_messages, intelligence)
         else:
             agent_notes = "Monitoring conversation. Scam not yet confirmed."
         
-        # Check if we should send the final callback to GUVI
-        # Only happens when: scam confirmed + enough messages + intel extracted
+        # Send callback if conditions met
         if should_send_callback(scam_confirmed, total_messages, intelligence):
             if not memory.is_callback_sent(session_id):
-                logger.info(f"Session {session_id}: Sending callback to GUVI...")
-                success = send_final_callback(
-                    session_id,
-                    total_messages,
-                    intelligence,
-                    agent_notes
-                )
+                logger.info(f"Session {session_id}: Sending callback...")
+                success = send_final_callback(session_id, total_messages, intelligence, agent_notes)
                 if success:
                     memory.mark_callback_sent(session_id)
-                    logger.info(f"Session {session_id}: Callback sent successfully")
-                else:
-                    logger.warning(f"Session {session_id}: Callback failed, will retry")
+                    logger.info(f"Session {session_id}: Callback sent")
         
-        # Build and return the response
         return HoneypotResponse(
             status="success",
             scamDetected=scam_confirmed,
@@ -153,8 +138,7 @@ async def process_message(
                 phoneNumbers=intelligence.get("phoneNumbers", []),
                 suspiciousKeywords=intelligence.get("suspiciousKeywords", [])
             ),
-            agentNotes=agent_notes,
-            agentResponse=agent_response
+            agentNotes=agent_notes
         )
         
     except Exception as e:

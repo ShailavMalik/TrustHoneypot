@@ -160,48 +160,43 @@ class HoneypotAgent:
         return response
     
     def generate_agent_notes(self, session_id: str, total_messages: int, intelligence: dict) -> str:
-        """
-        Create a summary of the scammer's behavior.
-        This goes in the agentNotes field of the response.
-        """
+        """Create a concise summary of scam tactics and extracted intel."""
         context = self._get_context(session_id)
         tactics = list(context.get("detected_tactics", []))
         
-        # Build a natural-sounding summary
-        parts = []
-        
+        # Summarize observed tactics
+        tactic_labels = []
         if "urgency" in tactics:
-            parts.append("used urgency tactics")
+            tactic_labels.append("urgency")
         if "threat" in tactics:
-            parts.append("made threatening statements")
+            tactic_labels.append("threats")
         if "verification" in tactics:
-            parts.append("impersonated bank/official authority")
+            tactic_labels.append("impersonation")
         if "payment_lure" in tactics:
-            parts.append("offered fake prize/refund")
+            tactic_labels.append("fake rewards")
         if "payment_request" in tactics:
-            parts.append("requested payment/account details")
+            tactic_labels.append("payment requests")
         
-        # Count what we extracted
-        intel_parts = []
+        # Count extracted intel
+        intel_counts = []
         if intelligence.get("upiIds"):
-            intel_parts.append(f"{len(intelligence['upiIds'])} UPI ID")
+            intel_counts.append(f"{len(intelligence['upiIds'])} UPI")
         if intelligence.get("bankAccounts"):
-            intel_parts.append(f"{len(intelligence['bankAccounts'])} bank account")
+            intel_counts.append(f"{len(intelligence['bankAccounts'])} bank acct")
         if intelligence.get("phoneNumbers"):
-            intel_parts.append(f"{len(intelligence['phoneNumbers'])} phone number")
+            intel_counts.append(f"{len(intelligence['phoneNumbers'])} phone")
         if intelligence.get("phishingLinks"):
-            intel_parts.append(f"{len(intelligence['phishingLinks'])} phishing link")
+            intel_counts.append(f"{len(intelligence['phishingLinks'])} link")
         
-        # Put it all together
-        notes = f"Engaged scammer across {total_messages} messages. "
-        if parts:
-            notes += "Scammer " + ", ".join(parts) + ". "
-        if intel_parts:
-            notes += "Extracted: " + ", ".join(intel_parts) + ". "
+        # Build final notes
+        notes = f"Scam detected after {total_messages} messages."
+        if tactic_labels:
+            notes += f" Tactics: {', '.join(tactic_labels)}."
+        if intel_counts:
+            notes += f" Extracted: {', '.join(intel_counts)}."
         else:
-            notes += "No concrete intelligence extracted yet. "
+            notes += " No concrete intel yet."
         
-        notes += "Agent maintained believable persona throughout."
         return notes
 
 

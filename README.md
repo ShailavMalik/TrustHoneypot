@@ -226,7 +226,7 @@ curl -X POST http://localhost:8000/honeypot \
 - Message received → Extract keywords
 - Calculate weighted risk score
 - Accumulate score per session
-- Confirm scam when threshold (40) crossed
+- Confirm scam when threshold (30) crossed
 
 ### 2. Agent Engagement
 
@@ -253,12 +253,11 @@ When ALL conditions met:
 
 System automatically sends final results to hackathon API.
 
-
 ### Detection Thresholds
 
 Modify in [app/detector.py](app/detector.py):
 
-- `SCAM_THRESHOLD = 40` - Risk score threshold for scam confirmation
+- `SCAM_THRESHOLD = 30` - Risk score threshold for scam confirmation
 
 ### Agent Behavior
 

@@ -53,16 +53,12 @@ class EngagementMetrics(BaseModel):
 
 
 class HoneypotResponse(BaseModel):
-    """
-    Response format matching GUVI's expected output exactly.
-    Don't change the field names - the evaluation system expects these.
-    """
+    """Response format matching GUVI's expected schema exactly."""
     status: str
     scamDetected: bool
     engagementMetrics: EngagementMetrics
     extractedIntelligence: ExtractedIntelligence
     agentNotes: str
-    agentResponse: Optional[str] = None  # What our agent said back to the scammer
 
 
 class CallbackPayload(BaseModel):

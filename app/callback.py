@@ -6,6 +6,8 @@ this callback, our submission won't be properly evaluated.
 """
 import requests
 import os
+import json
+from datetime import datetime
 from dotenv import load_dotenv
 import logging
 
@@ -15,6 +17,37 @@ logger = logging.getLogger(__name__)
 
 # The GUVI endpoint where we submit our final results
 CALLBACK_URL = os.getenv("CALLBACK_URL", "https://hackathon.guvi.in/api/updateHoneyPotFinalResult")
+
+# File to store callback history for debugging/audit
+CALLBACK_LOG_FILE = "callback_history.json"
+
+
+def _log_callback(session_id: str, payload: dict, response_status: int, response_text: str, success: bool):
+    """Persist callback details to JSON file for audit trail."""
+    try:
+        # Load existing logs or start fresh
+        if os.path.exists(CALLBACK_LOG_FILE):
+            with open(CALLBACK_LOG_FILE, "r") as f:
+                logs = json.load(f)
+        else:
+            logs = []
+        
+        # Add this callback
+        logs.append({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "sessionId": session_id,
+            "success": success,
+            "responseStatus": response_status,
+            "responseText": response_text[:500] if response_text else "",
+            "payload": payload
+        })
+        
+        # Save back
+        with open(CALLBACK_LOG_FILE, "w") as f:
+            json.dump(logs, f, indent=2)
+            
+    except Exception as e:
+        logger.warning(f"Failed to log callback: {e}")
 
 
 def send_final_callback(
@@ -61,41 +94,37 @@ def send_final_callback(
         # 200, 201, 204 all mean success
         if response.status_code in [200, 201, 204]:
             logger.info(f"Callback accepted for session {session_id}")
+            _log_callback(session_id, payload, response.status_code, response.text, True)
             return True
         else:
             logger.error(f"Callback rejected: {response.status_code} - {response.text}")
+            _log_callback(session_id, payload, response.status_code, response.text, False)
             return False
             
     except requests.exceptions.Timeout:
         logger.error("Callback timed out after 10 seconds")
+        _log_callback(session_id, payload, 0, "Timeout after 10 seconds", False)
         return False
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error sending callback: {str(e)}")
+        _log_callback(session_id, payload, 0, f"Network error: {str(e)}", False)
         return False
     except Exception as e:
         logger.error(f"Unexpected error in callback: {str(e)}")
+        _log_callback(session_id, payload, 0, f"Unexpected error: {str(e)}", False)
         return False
 
 
 def should_send_callback(scam_detected: bool, total_messages: int, intelligence: dict) -> bool:
     """
-    Check if we should send the final callback to GUVI.
-    
-    We only send when ALL of these are true:
-    1. We've confirmed it's a scam
-    2. We've exchanged enough messages (at least 3)
-    3. We've extracted at least one piece of intelligence
-    
-    The threshold of 3 messages balances engagement depth with efficiency.
+    Check if conditions are met to send the callback.
+    Requires: scam confirmed, 5+ messages, and at least one intel item.
     """
-    # Do we have any intel to report?
     has_intel = any([
         len(intelligence.get("bankAccounts", [])) > 0,
         len(intelligence.get("upiIds", [])) > 0,
         len(intelligence.get("phishingLinks", [])) > 0,
         len(intelligence.get("phoneNumbers", [])) > 0,
-        len(intelligence.get("suspiciousKeywords", [])) > 0,
     ])
     
-    # All three conditions must be met
-    return scam_detected and total_messages >= 3 and has_intel
+    return scam_detected and total_messages >= 5 and has_intel

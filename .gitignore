@@ -21,9 +21,17 @@ Thumbs.db
 # Logs and dumps
 logs/
 *.log
+callback_history.json
 
 # Local test and demo helpers
 demo.py
 quick_test.py
+validate.py
 start_server.bat
 start_server.ps1
+
+# Build and distribution
+build/
+dist/
+
+*.pdf
