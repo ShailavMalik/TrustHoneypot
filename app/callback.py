@@ -23,31 +23,34 @@ CALLBACK_LOG_FILE = "callback_history.json"
 
 
 def _log_callback(session_id: str, payload: dict, response_status: int, response_text: str, success: bool):
-    """Persist callback details to JSON file for audit trail."""
+    """Persist callback details to JSON file for audit trail AND log to stdout."""
+    callback_record = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "sessionId": session_id,
+        "success": success,
+        "responseStatus": response_status,
+        "responseText": response_text[:500] if response_text else "",
+        "payload": payload
+    }
+    
+    # IMPORTANT: Log to stdout for Railway logs (always visible)
+    logger.info(f"📞 CALLBACK RECORD: {json.dumps(callback_record, indent=None)}")
+    
     try:
-        # Load existing logs or start fresh
+        # Also save to local file (works locally, not on Railway)
         if os.path.exists(CALLBACK_LOG_FILE):
             with open(CALLBACK_LOG_FILE, "r") as f:
                 logs = json.load(f)
         else:
             logs = []
         
-        # Add this callback
-        logs.append({
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "sessionId": session_id,
-            "success": success,
-            "responseStatus": response_status,
-            "responseText": response_text[:500] if response_text else "",
-            "payload": payload
-        })
+        logs.append(callback_record)
         
-        # Save back
         with open(CALLBACK_LOG_FILE, "w") as f:
             json.dump(logs, f, indent=2)
             
     except Exception as e:
-        logger.warning(f"Failed to log callback: {e}")
+        logger.warning(f"Failed to log callback to file: {e}")
 
 
 def send_final_callback(
