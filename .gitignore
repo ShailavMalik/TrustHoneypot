@@ -29,6 +29,10 @@ quick_test.py
 validate.py
 start_server.bat
 start_server.ps1
+test_detection.py
+test_false_positive.py
+
+
 
 # Build and distribution
 build/
