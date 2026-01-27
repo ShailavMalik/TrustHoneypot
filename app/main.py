@@ -108,12 +108,15 @@ async def process_message(
         total_messages = len(request.conversationHistory) + 1
         duration_seconds = memory.get_duration(session_id)
         
-        # Generate notes
+        # Generate notes with enhanced detection details
         scam_confirmed = memory.is_scam_confirmed(session_id)
         if scam_confirmed:
-            agent_notes = agent.generate_agent_notes(session_id, total_messages, intelligence)
+            detection_details = detector.get_detection_details(session_id)
+            agent_notes = agent.generate_agent_notes(
+                session_id, total_messages, intelligence, detection_details
+            )
         else:
-            agent_notes = "Monitoring conversation. Scam not yet confirmed."
+            agent_notes = agent.generate_monitoring_notes(session_id, total_messages)
         
         # Send callback if conditions met
         if should_send_callback(scam_confirmed, total_messages, intelligence):

@@ -1,17 +1,26 @@
 # Agentic Honey-Pot API
 
-**Scam Detection & Intelligence Extraction System**
+**Advanced Scam Detection & Intelligence Extraction System**
 
 Built for the **India AI Impact Buildathon (GUVI)** - Problem Statement 2
 
-🌐 **Live Deployment:** https://trust-honeypot.up.railway.app  
-📚 **API Documentation:** https://trust-honeypot.up.railway.app/docs
+🌐 **Live Deployment:** https://trusthoneypot.up.railway.app  
+📚 **API Documentation:** https://trusthoneypot.up.railway.app/docs
 
 ---
 
 ## Overview
 
-This is a production-grade FastAPI backend that implements an intelligent honeypot system for detecting and engaging with scammers. The system uses risk-based detection, autonomous agent responses, and intelligence extraction to gather scammer information while maintaining a believable human persona.
+This is a production-grade FastAPI backend that implements an **advanced intelligent honeypot system** for detecting and engaging with scammers. The system uses **multi-layer detection**, autonomous agent responses, and comprehensive intelligence extraction to gather scammer information while maintaining a believable human persona.
+
+## 🏆 Key Differentiators
+
+- **Multi-Layer Detection Engine**: 5 layers of analysis (keywords, patterns, India-specific, behavioral, confidence)
+- **India-Specific Scam Patterns**: RBI impersonation, Aadhaar/PAN scams, digital arrest, TRAI notices
+- **Confidence Scoring**: Not just yes/no, but percentage confidence with risk levels
+- **Scam Type Classification**: Identifies 15+ specific scam types
+- **Enhanced Intelligence**: Extracts Aadhaar (masked), PAN, emails, crypto wallets, IFSC codes
+- **Privacy-Conscious**: Masks sensitive data (Aadhaar: XXXX-XXXX-1234, PAN: XXXXX1234X)
 
 ## Features
 
@@ -21,31 +30,59 @@ This is a production-grade FastAPI backend that implements an intelligent honeyp
 - Input validation using Pydantic models
 - CORS-enabled for cross-origin requests
 
-### 🎯 Risk-Based Scam Detection
+### 🎯 Advanced Multi-Layer Scam Detection
 
-- Weighted keyword scoring system
-- Urgency, verification, payment, and threat indicators
-- Threshold-based confirmation (not binary)
-- Session-level score accumulation
+**Layer 1: Weighted Keyword Scoring**
+
+- 200+ keywords across 9 categories
+- Urgency, verification, payment, threat, government, identity, telecom, courier, job/loan
+
+**Layer 2: Pattern Combination Analysis**
+
+- 20+ compound patterns (e.g., "RBI + KYC + suspend")
+- Regex-based template matching
+- Higher scores for multi-signal patterns
+
+**Layer 3: India-Specific Scam Detection**
+
+- Government impersonation (RBI, TRAI, Income Tax, CBI, ED)
+- Aadhaar/PAN scams
+- Digital arrest scams (trending 2024-2025)
+- Telecom/SIM block scams
+- Courier/parcel scams
+
+**Layer 4: Behavioral Analysis**
+
+- Escalation pattern detection
+- Pressure sequence recognition
+- Multi-category bonus scoring
+
+**Layer 5: Confidence Calibration**
+
+- Risk levels: Minimal → Low → Medium → High → Critical
+- Confidence percentage (0-99%)
+- Scam type classification
 
 ### 🤖 Autonomous Agent Engagement
 
 - Rule-based response generation
 - Maintains confused, cautious human persona
-- Context-aware replies
+- Context-aware replies based on detected tactics
 - Never reveals scam detection
 - No external LLM calls required
 
-### 🔍 Intelligence Extraction
+### 🔍 Comprehensive Intelligence Extraction
 
-- Regex-based extraction of:
-  - UPI IDs
-  - Bank account numbers
-  - Phone numbers
-  - Phishing URLs
-  - Suspicious keywords
-- Only captures scammer-voluntarily-shared data
-- No credential requests
+- **UPI IDs**: 50+ payment app handles supported
+- **Bank Accounts**: 9-18 digit account numbers
+- **IFSC Codes**: Bank branch identification
+- **Phone Numbers**: Multiple Indian formats
+- **Email Addresses**: Contact extraction
+- **Aadhaar Numbers**: Masked for privacy (XXXX-XXXX-1234)
+- **PAN Cards**: Masked for privacy (XXXXX1234X)
+- **Crypto Wallets**: Bitcoin, Ethereum, USDT addresses
+- **Phishing Links**: URLs, shortened links, messaging app links
+- **Messaging IDs**: WhatsApp, Telegram identifiers
 
 ### 💾 Session Memory
 
@@ -62,6 +99,7 @@ This is a production-grade FastAPI backend that implements an intelligent honeyp
   - Multi-turn engagement (≥5 messages)
   - Intelligence extracted
 - Sent only once per session
+- Full audit logging to `callback_history.json`
 
 ---
 
@@ -73,11 +111,11 @@ honeypot-api/
 │   ├── main.py          # FastAPI app, routes, middleware
 │   ├── auth.py          # API key authentication
 │   ├── models.py        # Pydantic models
-│   ├── detector.py      # Risk-based scam detection
-│   ├── agent.py         # Autonomous agent responses
-│   ├── extractor.py     # Intelligence extraction (regex)
+│   ├── detector.py      # Multi-layer scam detection engine
+│   ├── agent.py         # Autonomous agent with enhanced notes
+│   ├── extractor.py     # Comprehensive intelligence extraction
 │   ├── memory.py        # Session storage
-│   └── callback.py      # Final result callback
+│   └── callback.py      # Final result callback with logging
 ├── requirements.txt     # Python dependencies
 ├── .env.example         # Environment variables template
 └── README.md           # This file

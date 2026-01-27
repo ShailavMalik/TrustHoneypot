@@ -12,7 +12,8 @@ when they think they've got a real victim on the hook.
 The responses are designed to be believable. No one talks like a robot.
 """
 import random
-from typing import Dict, List
+from typing import Dict, List, Optional
+from app.detector import detector
 
 
 class HoneypotAgent:
@@ -91,6 +92,38 @@ class HoneypotAgent:
         "My husband passed away last year. I handle everything alone now. Please guide me."
     ]
     
+    # Risk level emojis for notes
+    RISK_EMOJIS = {
+        "minimal": "⚪",
+        "low": "🟢",
+        "medium": "🟡",
+        "high": "🟠",
+        "critical": "🔴"
+    }
+    
+    # Scam type descriptions for human-readable notes
+    SCAM_TYPE_LABELS = {
+        "government_impersonation": "Government Impersonation",
+        "bank_impersonation": "Bank Impersonation",
+        "identity_theft": "Identity/Aadhaar/PAN Scam",
+        "telecom_scam": "Telecom/SIM Block Scam",
+        "courier_scam": "Courier/Parcel Scam",
+        "job_loan_scam": "Job/Loan Scam",
+        "intimidation_scam": "Threat & Intimidation",
+        "payment_scam": "Payment/Money Scam",
+        "phishing": "Phishing/Verification Scam",
+        "lottery_scam": "Lottery/Prize Scam",
+        "refund_scam": "Refund/Cashback Scam",
+        "investment_scam": "Investment Scam",
+        "crypto_scam": "Crypto/Trading Scam",
+        "digital_arrest": "Digital Arrest Scam",
+        "credential_phishing": "Credential/OTP Phishing",
+        "urgent_action": "Urgency-Based Scam",
+        "account_threat": "Account Threat Scam",
+        "generic_scam": "Generic Scam Pattern",
+        "unknown": "Unknown Pattern"
+    }
+    
     def __init__(self):
         self.session_context: Dict[str, dict] = {}
     
@@ -159,12 +192,45 @@ class HoneypotAgent:
         
         return response
     
-    def generate_agent_notes(self, session_id: str, total_messages: int, intelligence: dict) -> str:
-        """Create a concise summary of scam tactics and extracted intel."""
+    def generate_agent_notes(self, session_id: str, total_messages: int, 
+                             intelligence: dict, 
+                             detection_details: Optional[object] = None) -> str:
+        """
+        Create a comprehensive summary with risk analysis.
+        
+        Includes:
+        - Risk level with emoji indicator
+        - Confidence percentage
+        - Scam type classification
+        - Detected tactics
+        - Extracted intelligence summary
+        """
         context = self._get_context(session_id)
         tactics = list(context.get("detected_tactics", []))
         
-        # Summarize observed tactics
+        # Get detection details from detector if available
+        if detection_details is None:
+            detection_details = detector.get_detection_details(session_id)
+        
+        # Build notes components
+        notes_parts = []
+        
+        # 1. Risk Level and Confidence
+        risk_level = getattr(detection_details, 'risk_level', 'medium')
+        confidence = getattr(detection_details, 'confidence', 0.7)
+        risk_emoji = self.RISK_EMOJIS.get(risk_level, "🟡")
+        
+        notes_parts.append(f"{risk_emoji} RISK: {risk_level.upper()} ({confidence*100:.0f}% confidence)")
+        
+        # 2. Scam Type Classification
+        scam_type = getattr(detection_details, 'scam_type', 'unknown')
+        scam_label = self.SCAM_TYPE_LABELS.get(scam_type, scam_type.replace('_', ' ').title())
+        notes_parts.append(f"TYPE: {scam_label}")
+        
+        # 3. Message count
+        notes_parts.append(f"MSGS: {total_messages}")
+        
+        # 4. Detected tactics
         tactic_labels = []
         if "urgency" in tactics:
             tactic_labels.append("urgency")
@@ -173,31 +239,54 @@ class HoneypotAgent:
         if "verification" in tactics:
             tactic_labels.append("impersonation")
         if "payment_lure" in tactics:
-            tactic_labels.append("fake rewards")
+            tactic_labels.append("money lure")
         if "payment_request" in tactics:
-            tactic_labels.append("payment requests")
+            tactic_labels.append("payment request")
         
-        # Count extracted intel
-        intel_counts = []
-        if intelligence.get("upiIds"):
-            intel_counts.append(f"{len(intelligence['upiIds'])} UPI")
-        if intelligence.get("bankAccounts"):
-            intel_counts.append(f"{len(intelligence['bankAccounts'])} bank acct")
-        if intelligence.get("phoneNumbers"):
-            intel_counts.append(f"{len(intelligence['phoneNumbers'])} phone")
-        if intelligence.get("phishingLinks"):
-            intel_counts.append(f"{len(intelligence['phishingLinks'])} link")
-        
-        # Build final notes
-        notes = f"Scam detected after {total_messages} messages."
         if tactic_labels:
-            notes += f" Tactics: {', '.join(tactic_labels)}."
-        if intel_counts:
-            notes += f" Extracted: {', '.join(intel_counts)}."
-        else:
-            notes += " No concrete intel yet."
+            notes_parts.append(f"TACTICS: {', '.join(tactic_labels)}")
         
-        return notes
+        # 5. Extracted intelligence summary
+        intel_parts = []
+        if intelligence.get("upiIds"):
+            intel_parts.append(f"{len(intelligence['upiIds'])} UPI")
+        if intelligence.get("bankAccounts"):
+            intel_parts.append(f"{len(intelligence['bankAccounts'])} bank")
+        if intelligence.get("phoneNumbers"):
+            intel_parts.append(f"{len(intelligence['phoneNumbers'])} phone")
+        if intelligence.get("phishingLinks"):
+            intel_parts.append(f"{len(intelligence['phishingLinks'])} links")
+        if intelligence.get("emails"):
+            intel_parts.append(f"{len(intelligence['emails'])} email")
+        if intelligence.get("aadhaarNumbers"):
+            intel_parts.append(f"{len(intelligence['aadhaarNumbers'])} aadhaar")
+        if intelligence.get("panNumbers"):
+            intel_parts.append(f"{len(intelligence['panNumbers'])} PAN")
+        if intelligence.get("cryptoWallets"):
+            intel_parts.append(f"{len(intelligence['cryptoWallets'])} crypto")
+        
+        if intel_parts:
+            notes_parts.append(f"INTEL: {', '.join(intel_parts)}")
+        else:
+            notes_parts.append("INTEL: Gathering...")
+        
+        return " | ".join(notes_parts)
+    
+    def generate_monitoring_notes(self, session_id: str, total_messages: int) -> str:
+        """Generate notes for when scam is not yet confirmed."""
+        detection_details = detector.get_detection_details(session_id)
+        
+        risk_level = getattr(detection_details, 'risk_level', 'minimal')
+        confidence = getattr(detection_details, 'confidence', 0.0)
+        score = getattr(detection_details, 'total_score', 0)
+        risk_emoji = self.RISK_EMOJIS.get(risk_level, "⚪")
+        
+        if score == 0:
+            return "Monitoring conversation. No suspicious patterns detected yet."
+        elif confidence < 0.5:
+            return f"{risk_emoji} Monitoring. Risk score: {score} (threshold: 30). Confidence: {confidence*100:.0f}%"
+        else:
+            return f"{risk_emoji} Suspicious activity detected. Score: {score}. Awaiting confirmation threshold."
 
 
 # Single instance used across the app
