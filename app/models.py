@@ -3,14 +3,22 @@ Data models for the Honeypot API.
 Using Pydantic for validation - it catches bad data before it causes problems.
 """
 from pydantic import BaseModel, Field
+from pydantic import ConfigDict
 from typing import List, Optional
 
 
 class Message(BaseModel):
-    """A single message in the conversation."""
-    sender: str  # Either 'scammer' or 'user'
-    text: str
-    timestamp: Optional[str] = None  # ISO-8601 format, optional for flexibility
+        """A single message in the conversation.
+    
+        Notes:
+        - Some external testers may omit `sender` in history items. We default to
+            'scammer' to be permissive and avoid 422s for missing keys.
+        - `sender` can be 'scammer' or 'agent' (we only act on 'scammer').
+        """
+        model_config = ConfigDict(extra="ignore")  # ignore unexpected fields
+        sender: Optional[str] = Field(default="scammer")  # default for leniency
+        text: str
+        timestamp: Optional[str] = None  # ISO-8601 format, optional for flexibility
 
 
 class Metadata(BaseModel):
@@ -28,6 +36,7 @@ class HoneypotRequest(BaseModel):
     and respond to. Each request has a sessionId to track multi-turn
     conversations with the same scammer.
     """
+    model_config = ConfigDict(extra="ignore")  # tolerate extra fields from testers
     sessionId: str
     message: Message
     conversationHistory: List[Message] = Field(default_factory=list)

@@ -6,8 +6,10 @@ This is the main entry point for the honeypot system. It receives suspected
 scam messages from the GUVI platform, analyzes them, generates responses,
 extracts intelligence, and reports back when we've gathered enough info.
 """
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 import logging
 
 from app.models import (
@@ -54,6 +56,26 @@ async def startup_event():
     logger.info("📚 Docs: http://127.0.0.1:8000/docs")
     logger.info("🏥 Health: GET /")
     logger.info("🍯 Honeypot: POST /honeypot")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log full validation errors to help diagnose 422s from external testers."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    logger.error(
+        "422 Validation Error on %s: errors=%s, body=%s",
+        request.url.path, exc.errors(), body
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "message": "Invalid request payload. See detail for exact fields.",
+        },
+    )
 
 
 @app.get("/")
