@@ -131,6 +131,13 @@ async def process_message(
         intel_summary = extractor.get_intelligence_summary(session_id)
         logger.info(f"[{session_id}] 🔎 INTEL: {intel_summary}")
         
+        # Enrich suspiciousKeywords with detected categories for better analysis
+        detected_categories = list(detection_details.triggered_categories)
+        if detection_details.scam_type and detection_details.scam_type != "unknown":
+            detected_categories.append(detection_details.scam_type)
+        existing_keywords = intelligence.get("suspiciousKeywords", [])
+        intelligence["suspiciousKeywords"] = list(set(existing_keywords + detected_categories))
+        
         # Calculate metrics using conversation history length + 1
         total_messages = len(request.conversationHistory) + 1
         duration_seconds = memory.get_duration(session_id)

@@ -121,7 +121,8 @@ def send_final_callback(
 def should_send_callback(scam_detected: bool, total_messages: int, intelligence: dict) -> bool:
     """
     Check if conditions are met to send the callback.
-    Requires: scam confirmed, 5+ messages, and at least one intel item.
+    Requires: scam confirmed and at least one intel item.
+    Changed from 5+ messages to 1+ to ensure callback fires for short test sessions.
     """
     has_intel = any([
         len(intelligence.get("bankAccounts", [])) > 0,
@@ -130,4 +131,4 @@ def should_send_callback(scam_detected: bool, total_messages: int, intelligence:
         len(intelligence.get("phoneNumbers", [])) > 0,
     ])
     
-    return scam_detected and total_messages >= 5 and has_intel
+    return scam_detected and total_messages >= 1 and has_intel
