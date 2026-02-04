@@ -92,13 +92,13 @@ class HoneypotAgent:
         "My husband passed away last year. I handle everything alone now. Please guide me."
     ]
     
-    # Risk level emojis for notes
+    # Risk level indicators for notes (text-based for compatibility)
     RISK_EMOJIS = {
-        "minimal": "⚪",
-        "low": "🟢",
-        "medium": "🟡",
-        "high": "🟠",
-        "critical": "🔴"
+        "minimal": "[OK]",
+        "low": "[LOW]",
+        "medium": "[MED]",
+        "high": "[HIGH]",
+        "critical": "[CRIT]"
     }
     
     # Scam type descriptions for human-readable notes
