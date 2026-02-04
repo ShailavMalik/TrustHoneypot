@@ -32,6 +32,7 @@ class Message(BaseModel):
 
 class Metadata(BaseModel):
     """Optional context about the message channel."""
+    model_config = ConfigDict(extra="ignore")  # tolerate extra fields
     channel: str = "SMS"  # SMS, WhatsApp, Email, Chat
     language: str = "English"
     locale: str = "IN"
@@ -50,6 +51,7 @@ class HoneypotRequest(BaseModel):
     message: Message
     conversationHistory: List[Message] = Field(default_factory=list)
     metadata: Optional[Metadata] = None  # Optional as per GUVI docs
+    timestamp: Optional[Union[str, int]] = None  # Some testers send timestamp at root level
 
 
 class ExtractedIntelligence(BaseModel):
