@@ -96,7 +96,7 @@ This is a production-grade FastAPI backend that implements an **advanced intelli
 - Automatic callback to GUVI evaluation API
 - Triggered when all conditions met:
   - Scam confirmed
-  - Multi-turn engagement (≥5 messages)
+  - Multi-turn engagement (≥3 messages)
   - Intelligence extracted
 - Sent only once per session
 - Full audit logging to `callback_history.json`
@@ -316,7 +316,7 @@ curl -X POST http://localhost:8000/honeypot \
 When ALL conditions met:
 
 - ✅ Scam confirmed
-- ✅ Multi-turn conversation (≥5 messages)
+- ✅ Multi-turn conversation (≥3 messages)
 - ✅ At least one intelligence item extracted
 
 System automatically sends final results to hackathon API.
@@ -447,7 +447,7 @@ This implementation follows the official problem statement:
 
 ### Callback Not Sending
 
-- Check if all conditions met (5+ messages, intelligence extracted, scam confirmed)
+- Check if all conditions met (3+ messages, intelligence extracted, scam confirmed)
 - Verify `CALLBACK_URL` in `.env`
 - Check logs for callback errors
 - Ensure network connectivity
