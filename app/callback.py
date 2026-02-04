@@ -121,8 +121,13 @@ def send_final_callback(
 def should_send_callback(scam_detected: bool, total_messages: int, intelligence: dict) -> bool:
     """
     Check if conditions are met to send the callback.
-    Requires: scam confirmed and at least one intel item.
-    Changed from 5+ messages to 1+ to ensure callback fires for short test sessions.
+    
+    Per hackathon requirements, callback should only be sent when:
+    1. Scam intent is confirmed (scamDetected = true)
+    2. AI Agent has completed sufficient engagement (3+ messages)
+    3. Intelligence extraction is finished (at least one intel item)
+    
+    This is the FINAL step of the conversation lifecycle.
     """
     has_intel = any([
         len(intelligence.get("bankAccounts", [])) > 0,
@@ -131,4 +136,8 @@ def should_send_callback(scam_detected: bool, total_messages: int, intelligence:
         len(intelligence.get("phoneNumbers", [])) > 0,
     ])
     
-    return scam_detected and total_messages >= 1 and has_intel
+    # All three conditions must be met:
+    # 1. Scam confirmed
+    # 2. Sufficient engagement (3+ messages shows real interaction)
+    # 3. Intel extracted (we have actionable data)
+    return scam_detected and total_messages >= 3 and has_intel
