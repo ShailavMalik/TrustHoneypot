@@ -58,17 +58,46 @@ async def startup_event():
     logger.info("🍯 Honeypot: POST /honeypot")
 
 
+@app.middleware("http")
+async def log_all_requests(request: Request, call_next):
+    """Log every incoming request for debugging."""
+    import json
+    
+    # Log request details
+    logger.info(f"🌐 INCOMING: {request.method} {request.url.path}")
+    logger.info(f"🌐 HEADERS: {dict(request.headers)}")
+    
+    # Read and log body (need to cache it for reuse)
+    body_bytes = await request.body()
+    if body_bytes:
+        try:
+            body_json = json.loads(body_bytes.decode('utf-8'))
+            logger.info(f"🌐 BODY: {json.dumps(body_json, indent=None)[:2000]}")
+        except Exception as e:
+            logger.info(f"🌐 BODY (raw): {body_bytes[:500]}")
+    
+    # Reconstruct request with cached body
+    from starlette.requests import Request as StarletteRequest
+    from starlette.datastructures import Headers
+    
+    async def receive():
+        return {"type": "http.request", "body": body_bytes}
+    
+    request = Request(request.scope, receive)
+    
+    # Process request
+    response = await call_next(request)
+    
+    logger.info(f"🌐 RESPONSE: {response.status_code}")
+    return response
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Log full validation errors to help diagnose 422s from external testers."""
-    try:
-        body = await request.json()
-    except Exception:
-        body = None
-    logger.error(
-        "422 Validation Error on %s: errors=%s, body=%s",
-        request.url.path, exc.errors(), body
-    )
+    logger.error(f"❌ 422 VALIDATION ERROR on {request.url.path}")
+    logger.error(f"❌ ERRORS: {exc.errors()}")
+    
     return JSONResponse(
         status_code=422,
         content={
