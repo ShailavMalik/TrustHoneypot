@@ -60,43 +60,28 @@ async def startup_event():
 
 @app.middleware("http")
 async def log_all_requests(request: Request, call_next):
-    """Log every incoming request for debugging."""
+    """Log incoming requests (simplified for readability)."""
     import json
     
-    # Log request details
-    logger.info(f"🌐 INCOMING: {request.method} {request.url.path}")
-    logger.info(f"🌐 HEADERS: {dict(request.headers)}")
-    
-    # Read and log body (need to cache it for reuse)
-    body_bytes = await request.body()
-    if body_bytes:
-        try:
-            body_json = json.loads(body_bytes.decode('utf-8'))
-            logger.info(f"🌐 BODY: {json.dumps(body_json, indent=None)[:2000]}")
-        except Exception as e:
-            logger.info(f"🌐 BODY (raw): {body_bytes[:500]}")
-    
-    # Reconstruct request with cached body
-    from starlette.requests import Request as StarletteRequest
-    from starlette.datastructures import Headers
-    
-    async def receive():
-        return {"type": "http.request", "body": body_bytes}
-    
-    request = Request(request.scope, receive)
+    # Only log path and method for non-health endpoints
+    if request.url.path != "/":
+        logger.info(f"→ {request.method} {request.url.path}")
     
     # Process request
     response = await call_next(request)
     
-    logger.info(f"🌐 RESPONSE: {response.status_code}")
     return response
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Log full validation errors to help diagnose 422s from external testers."""
-    logger.error(f"❌ 422 VALIDATION ERROR on {request.url.path}")
-    logger.error(f"❌ ERRORS: {exc.errors()}")
+    """Log validation errors clearly."""
+    logger.error("=" * 60)
+    logger.error("[VALIDATION ERROR - 422]")
+    logger.error("-" * 60)
+    logger.error(f"Path: {request.url.path}")
+    logger.error(f"Errors: {exc.errors()}")
+    logger.error("=" * 60)
     
     return JSONResponse(
         status_code=422,
@@ -127,8 +112,19 @@ async def process_message(
         session_id = request.sessionId
         current_message = request.message.text
         
-        logger.info(f"[{session_id}] 📥 REQUEST: sender={request.message.sender}, msg='{current_message[:100]}...'")
-        logger.info(f"[{session_id}] History: {len(request.conversationHistory)} messages")
+        # ============================================================
+        # [REQUEST RECEIVED]
+        # ============================================================
+        logger.info("=" * 60)
+        logger.info("[REQUEST RECEIVED]")
+        logger.info("-" * 60)
+        logger.info(f"Session ID      : {session_id}")
+        logger.info(f"Sender          : {request.message.sender}")
+        logger.info(f"Message         : {current_message[:120]}{'...' if len(current_message) > 120 else ''}")
+        logger.info(f"History Count   : {len(request.conversationHistory)} messages")
+        if request.metadata:
+            logger.info(f"Channel         : {request.metadata.channel}")
+        logger.info("-" * 60)
         
         # Process conversation history for context
         for hist_msg in request.conversationHistory:
@@ -141,11 +137,22 @@ async def process_message(
         # Analyze current message
         risk_score, is_scam = detector.calculate_risk_score(current_message, session_id)
         detection_details = detector.get_detection_details(session_id)
-        logger.info(f"[{session_id}] 🔍 DETECTION: score={risk_score}, scam={is_scam}, risk={detection_details.risk_level}, conf={detection_details.confidence:.0%}")
+        
+        # ============================================================
+        # [SCAM ANALYSIS]
+        # ============================================================
+        logger.info("[SCAM ANALYSIS]")
+        logger.info("-" * 60)
+        logger.info(f"Risk Score      : {risk_score}/100")
+        logger.info(f"Risk Level      : {detection_details.risk_level.upper()}")
+        logger.info(f"Scam Detected   : {is_scam}")
+        logger.info(f"Scam Type       : {detection_details.scam_type}")
+        logger.info(f"Confidence      : {detection_details.confidence*100:.0f}%")
+        logger.info("-" * 60)
         
         if is_scam and not memory.is_scam_confirmed(session_id):
             memory.mark_scam_confirmed(session_id)
-            logger.info(f"[{session_id}] ⚠️ SCAM CONFIRMED! Type: {detection_details.scam_type}")
+            logger.info(f"⚠️  SCAM CONFIRMED for session {session_id}")
         
         # Generate internal agent response (not returned to client)
         if memory.is_scam_confirmed(session_id):
@@ -153,12 +160,39 @@ async def process_message(
             internal_response = agent.generate_response(session_id, current_message, msg_count)
             memory.set_agent_response(session_id, internal_response)
             memory.add_message(session_id, "agent", internal_response)
-            logger.info(f"[{session_id}] 🤖 AGENT: '{internal_response[:80]}...'")
         
         # Extract intelligence
         intelligence = extractor.extract(current_message, session_id)
         intel_summary = extractor.get_intelligence_summary(session_id)
-        logger.info(f"[{session_id}] 🔎 INTEL: {intel_summary}")
+        
+        # Mask PII in logs
+        def mask_pii(data):
+            """Mask sensitive data for logging."""
+            masked = {}
+            if data.get("upiIds"):
+                masked["UPI IDs"] = f"{len(data['upiIds'])} found (masked)"
+            if data.get("phoneNumbers"):
+                masked["Phone Numbers"] = f"{len(data['phoneNumbers'])} found (masked)"
+            if data.get("bankAccounts"):
+                masked["Bank Accounts"] = f"{len(data['bankAccounts'])} found (masked)"
+            if data.get("phishingLinks"):
+                masked["Links"] = f"{len(data['phishingLinks'])} found"
+            if data.get("emails"):
+                masked["Emails"] = f"{len(data['emails'])} found"
+            return masked
+        
+        # ============================================================
+        # [INTELLIGENCE STATUS]
+        # ============================================================
+        logger.info("[INTELLIGENCE EXTRACTED]")
+        logger.info("-" * 60)
+        masked_intel = mask_pii(intelligence)
+        if masked_intel:
+            for key, value in masked_intel.items():
+                logger.info(f"{key:20}: {value}")
+        else:
+            logger.info("No intelligence extracted yet")
+        logger.info("-" * 60)
         
         # Enrich suspiciousKeywords with detected categories for better analysis
         detected_categories = list(detection_details.triggered_categories)
@@ -180,20 +214,35 @@ async def process_message(
         else:
             agent_notes = agent.generate_monitoring_notes(session_id, total_messages)
         
-        logger.info(f"[{session_id}] 📝 NOTES: {agent_notes}")
-        
         # Send callback if conditions met
         callback_sent = False
-        if should_send_callback(scam_confirmed, total_messages, intelligence):
+        callback_eligible = should_send_callback(scam_confirmed, total_messages, intelligence)
+        
+        # ============================================================
+        # [CALLBACK STATUS]
+        # ============================================================
+        logger.info("[CALLBACK STATUS]")
+        logger.info("-" * 60)
+        logger.info(f"Scam Confirmed  : {scam_confirmed}")
+        logger.info(f"Message Count   : {total_messages}")
+        logger.info(f"Has Intel       : {bool(masked_intel)}")
+        logger.info(f"Eligible        : {callback_eligible}")
+        
+        if callback_eligible:
             if not memory.is_callback_sent(session_id):
-                logger.info(f"[{session_id}] 📞 CALLBACK: Attempting (scam={scam_confirmed}, msgs={total_messages}, intel={bool(intel_summary)})")
+                logger.info("Sending callback to GUVI...")
                 success = send_final_callback(session_id, total_messages, intelligence, agent_notes)
                 if success:
                     memory.mark_callback_sent(session_id)
                     callback_sent = True
-                    logger.info(f"[{session_id}] ✅ CALLBACK SUCCESS")
+                    logger.info("✅ Callback sent successfully")
                 else:
-                    logger.error(f"[{session_id}] ❌ CALLBACK FAILED")
+                    logger.info("❌ Callback failed")
+            else:
+                logger.info("⏭️  Callback already sent for this session")
+        else:
+            logger.info("⏸️  Callback not eligible yet")
+        logger.info("-" * 60)
         
         response = HoneypotResponse(
             status="success",
@@ -212,7 +261,17 @@ async def process_message(
             agentNotes=agent_notes
         )
         
-        logger.info(f"[{session_id}] 📤 RESPONSE: status=success, scamDetected={scam_confirmed}, duration={duration_seconds}s, callback_sent={callback_sent}")
+        # ============================================================
+        # [RESPONSE]
+        # ============================================================
+        logger.info("[RESPONSE SENT]")
+        logger.info("-" * 60)
+        logger.info(f"Status          : success")
+        logger.info(f"Scam Detected   : {scam_confirmed}")
+        logger.info(f"Duration        : {duration_seconds}s")
+        logger.info(f"Callback Sent   : {callback_sent}")
+        logger.info("=" * 60)
+        logger.info("")
         
         return response
         
