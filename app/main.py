@@ -113,7 +113,8 @@ async def process_message(
         
         # Generate internal agent response (not returned to client)
         scam_confirmed = memory.is_scam_confirmed(session_id)
-        msg_count = memory.get_message_count(session_id)
+        # Use actual conversation length from history, not just server memory count
+        msg_count = len(request.conversationHistory) + 1
         
         # Always generate a reply using get_reply (handles both scam and non-scam)
         agent_reply = agent.get_reply(session_id, current_message, msg_count, scam_confirmed)

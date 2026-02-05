@@ -164,14 +164,41 @@ class HoneypotAgent:
     
     # Technical confusion responses (very believable for elderly persona)
     TECH_CONFUSION_RESPONSES = [
-        "UPI? Is that same as BHIM app? My grandson installed something on my phone.",
         "Google Pay is showing some error. Can I do by NEFT instead?",
-        "Sir my OTP is not coming. Network is weak in my area. Can you wait?",
         "How to check my bank balance? Let me open the app... it's asking for fingerprint...",
         "I don't know how to do screen share. My camera is not working properly.",
-        "Can you send me the UPI ID on WhatsApp? I can't hear properly on call.",
         "Sir the app is showing 'insufficient balance'. I need to transfer from FD first.",
         "Wait, which app to open? I have Paytm, PhonePe, and BHIM all three.",
+        "My phone is very slow. Let me restart the app once.",
+        "The screen is frozen. Hold on, I am pressing the button...",
+    ]
+    
+    # OTP specific responses - when they ask for OTP directly
+    OTP_RESPONSES = [
+        "OTP? Wait wait, let me check my messages... which number it comes from?",
+        "Sir my OTP is not coming. Network is weak in my area. Can you wait 5 minutes?",
+        "I got so many OTPs, which one you need? There are 3-4 messages here.",
+        "The OTP has come but it says 'do not share with anyone'. Should I still tell?",
+        "Sir OTP is showing expired. It says 2 minutes validity only. Can you send new one?",
+        "I cannot read properly, my eyes are weak. It's showing... 4... 7... wait, let me get my glasses.",
+        "Beta, I pressed wrong button and OTP message got deleted. Can you resend?",
+        "OTP has come but phone is asking for fingerprint to open message. One second...",
+        "Sir I don't get OTP on this number. My son changed my SIM last week only.",
+        "The message is showing but screen is too dim. Let me increase brightness...",
+    ]
+    
+    # Account number responses - when they ask for bank account/card details
+    ACCOUNT_NUMBER_RESPONSES = [
+        "Account number? Which account - I have savings and FD both. Let me find the passbook.",
+        "Sir my account number is very long, 14 digits. Let me read slowly: 1... 2... wait, where did I keep that paper?",
+        "I have SBI and HDFC both. Which one you need? My pension comes in SBI.",
+        "Beta, I don't remember full number. It's written in the passbook. I am searching...",
+        "Account number I can give, but the red colored book is in almirah upstairs. Give me 5 minutes.",
+        "Is it the number on ATM card back side? I am looking... it's scratched, I cannot read properly.",
+        "Sir, I am a little confused. Debit card number or account number? Both are different na?",
+        "Let me call my son first. He has noted all account details in his phone.",
+        "Account number? Okay, I am opening my net banking... it's asking for password... wait...",
+        "My passbook is showing two numbers - account number and CIF number. Which one?",
     ]
 
     # Risk level indicators for notes (text-based for compatibility)
@@ -260,7 +287,7 @@ class HoneypotAgent:
         tactics = []
         msg = message.lower()
         
-        if any(w in msg for w in ["urgent", "immediate", "now", "hurry", "quickly", "jaldi", "turant"]):
+        if any(w in msg for w in ["urgent", "immediate", "now", "hurry", "quickly", "jaldi", "turant", "minutes"]):
             tactics.append("urgency")
         if any(w in msg for w in ["verify", "kyc", "update", "confirm", "suspended", "blocked"]):
             tactics.append("verification")
@@ -268,13 +295,18 @@ class HoneypotAgent:
             tactics.append("payment_lure")
         if any(w in msg for w in ["police", "legal", "arrest", "court", "case", "warrant", "cbi", "ed", "jail"]):
             tactics.append("threat")
-        if any(w in msg for w in ["upi", "account", "transfer", "pay", "send", "bhim", "paytm", "phonepe", "gpay"]):
+        if any(w in msg for w in ["upi", "transfer", "pay", "send", "bhim", "paytm", "phonepe", "gpay"]):
             tactics.append("payment_request")
         if any(w in msg for w in ["video call", "digital arrest", "stay on call", "don't disconnect", "skype", "zoom"]):
             tactics.append("digital_arrest")
         if any(w in msg for w in ["parcel", "courier", "package", "customs", "fedex", "dhl", "drugs", "contraband"]):
             tactics.append("courier")
-        if any(w in msg for w in ["otp", "password", "pin", "cvv", "card number", "debit card", "credit card"]):
+        # More specific credential detection
+        if any(w in msg for w in ["otp", "one time password", "6 digit", "verification code"]):
+            tactics.append("otp_request")
+        if any(w in msg for w in ["account number", "bank account", "account no", "a/c number", "a/c no"]):
+            tactics.append("account_request")
+        if any(w in msg for w in ["password", "pin", "cvv", "card number", "debit card", "credit card", "atm pin"]):
             tactics.append("credential")
             
         return tactics
@@ -319,8 +351,14 @@ class HoneypotAgent:
         elif "courier" in tactics:
             # Courier/parcel scam - deny knowledge, show confusion
             pool = self.COURIER_RESPONSES
+        elif "otp_request" in tactics:
+            # They want OTP specifically - stall with OTP-related confusion
+            pool = self.OTP_RESPONSES
+        elif "account_request" in tactics:
+            # They want account number - stall looking for passbook/details
+            pool = self.ACCOUNT_NUMBER_RESPONSES
         elif "credential" in tactics:
-            # They want OTP/credentials - technical confusion
+            # They want other credentials (PIN, CVV, password)
             pool = self.TECH_CONFUSION_RESPONSES
         elif escalation >= 3 or "threat" in tactics:
             # They're threatening - show fear
