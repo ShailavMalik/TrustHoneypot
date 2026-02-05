@@ -31,8 +31,8 @@ start_server.bat
 start_server.ps1
 test_detection.py
 test_false_positive.py
-
-
+test_multiturn_callback.py
+test_scenarios.py
 
 # Build and distribution
 build/

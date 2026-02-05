@@ -73,12 +73,9 @@ class EngagementMetrics(BaseModel):
 
 
 class HoneypotResponse(BaseModel):
-    """Response format matching GUVI's expected schema exactly."""
+    """Simplified response format per updated documentation."""
     status: str
-    scamDetected: bool
-    engagementMetrics: EngagementMetrics
-    extractedIntelligence: ExtractedIntelligence
-    agentNotes: str
+    reply: str
 
 
 class CallbackPayload(BaseModel):

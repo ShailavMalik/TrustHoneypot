@@ -13,14 +13,34 @@ Built for the **India AI Impact Buildathon (GUVI)** - Problem Statement 2
 
 This is a production-grade FastAPI backend that implements an **advanced intelligent honeypot system** for detecting and engaging with scammers. The system uses **multi-layer detection**, autonomous agent responses, and comprehensive intelligence extraction to gather scammer information while maintaining a believable human persona.
 
+### Response Format (Simplified)
+
+The API returns a clean, simple response:
+
+```json
+{
+  "status": "success",
+  "reply": "<human-like response>"
+}
+```
+
+All internal processing (scam detection, intelligence extraction, metrics) is logged server-side but **never exposed** in the API response. This ensures:
+
+- Scammers cannot detect they are interacting with a honeypot
+- The agent maintains a believable human persona
+- Detection status is never revealed
+
 ## 🏆 Key Differentiators
 
+- **Simplified API Response**: Only `status` and `reply` - no detection exposed
 - **Multi-Layer Detection Engine**: 5 layers of analysis (keywords, patterns, India-specific, behavioral, confidence)
+- **Context-Aware Responses**: Agent adapts dynamically based on conversation history and escalation
 - **India-Specific Scam Patterns**: RBI impersonation, Aadhaar/PAN scams, digital arrest, TRAI notices
 - **Confidence Scoring**: Not just yes/no, but percentage confidence with risk levels
 - **Scam Type Classification**: Identifies 15+ specific scam types
 - **Enhanced Intelligence**: Extracts Aadhaar (masked), PAN, emails, crypto wallets, IFSC codes
 - **Privacy-Conscious**: Masks sensitive data (Aadhaar: XXXX-XXXX-1234, PAN: XXXXX1234X)
+- **Human-Like Behavior**: Never reveals detection, maintains believable persona
 
 ## Features
 
@@ -65,11 +85,26 @@ This is a production-grade FastAPI backend that implements an **advanced intelli
 
 ### 🤖 Autonomous Agent Engagement
 
-- Rule-based response generation
-- Maintains confused, cautious human persona
-- Context-aware replies based on detected tactics
-- Never reveals scam detection
-- No external LLM calls required
+- **Context-Aware Response Generation**
+  - Tracks conversation history across messages
+  - Monitors escalation level (initial → engaged → suspicious → fearful)
+  - Adapts responses based on detected tactics
+- **Dynamic Response Adaptation**
+  - Initial contact: Confused, "Who is this?"
+  - Verification scams: Cautious, skeptical
+  - Payment lures: Skeptical but curious
+  - Threats: Fearful, cooperative (to extract more intel)
+  - Extended engagement: Asks for details (UPI, account numbers)
+- **Human-Like Behavior**
+  - Uses stalling tactics ("Hold on, someone at the door")
+  - Shows appropriate emotions based on scammer pressure
+  - Never repeats the same response in a session
+  - Avoids robotic or formulaic replies
+- **Safety Guarantees**
+  - Never reveals scam detection
+  - Never mentions "fraud", "scam", or "suspicious"
+  - Never accuses the sender
+  - No external LLM calls required
 
 ### 🔍 Comprehensive Intelligence Extraction
 
@@ -225,21 +260,11 @@ Response format:
 ```json
 {
   "status": "success",
-  "scamDetected": true,
-  "engagementMetrics": {
-    "engagementDurationSeconds": 420,
-    "totalMessagesExchanged": 18
-  },
-  "extractedIntelligence": {
-    "bankAccounts": ["123456789012"],
-    "upiIds": ["scammer@paytm"],
-    "phishingLinks": ["http://fake-bank.com"],
-    "phoneNumbers": ["9876543210"],
-    "suspiciousKeywords": ["verify account", "urgent"]
-  },
-  "agentNotes": "Scam conversation detected after 18 message exchanges. Extracted: 1 UPI ID(s), 1 bank account(s), 1 phone number(s), 1 phishing link(s). Agent successfully maintained believable persona throughout engagement."
+  "reply": "Hello? Who is this?"
 }
 ```
+
+**Note:** The response contains only `status` and `reply`. All internal processing (scam detection, metrics, intelligence) is handled server-side and logged internally but never exposed to the client.
 
 ### Example cURL (Production)
 
@@ -289,35 +314,45 @@ curl -X POST http://localhost:8000/honeypot \
 
 ## How It Works
 
-### 1. Scam Detection Flow
+### 1. Message Processing Flow
 
-- Message received → Extract keywords
-- Calculate weighted risk score
-- Accumulate score per session
-- Confirm scam when threshold (30) crossed
+```
+Request → Scam Detection → Agent Response → Intelligence Extraction → Callback (if ready)
+```
 
-### 2. Agent Engagement
+### 2. Scam Detection (Internal)
 
-- Once scam confirmed → Generate contextual response
-- Maintain confused, cautious persona
-- Ask clarifying questions
-- Stall with believable excuses
-- Never expose detection
+- Multi-layer keyword and pattern analysis
+- Accumulative risk scoring per session
+- Scam confirmed when threshold (30) crossed
+- **Detection status never exposed in API response**
 
-### 3. Intelligence Extraction
+### 3. Agent Engagement (Human-Like Replies)
 
-- Scan each message with regex patterns
-- Extract UPI IDs, bank accounts, phones, URLs
-- Accumulate per session
-- Track suspicious keywords
+- Context-aware response generation
+- Tracks conversation history and escalation level
+- Adapts responses based on scammer tactics:
+  - Initial: Confused, "Who is this?"
+  - Verification scams: Cautious, asks for proof
+  - Threats: Fearful, cooperative to extract more
+  - Payment requests: Seeks details (UPI, account numbers)
+- **Never reveals scam detection**
+- **Maintains believable human persona**
 
-### 4. Callback Trigger
+### 4. Intelligence Extraction (Internal)
+
+- Runs on every message (silent)
+- Extracts: UPI IDs, bank accounts, phones, links, emails
+- Results logged internally, not exposed
+
+### 5. Callback Trigger
 
 When ALL conditions met:
 
-- ✅ Scam confirmed
+- ✅ Scam confirmed (internal)
 - ✅ Multi-turn conversation (≥3 messages)
 - ✅ At least one intelligence item extracted
+- ✅ Callback not already sent for this session
 
 System automatically sends final results to hackathon API.
 
@@ -331,10 +366,13 @@ Modify in [app/detector.py](app/detector.py):
 
 Customize response templates in [app/agent.py](app/agent.py):
 
-- `INITIAL_RESPONSES` - First contact replies
-- `VERIFICATION_RESPONSES` - Account verification scenarios
-- `PAYMENT_RESPONSES` - Payment/refund scenarios
-- `CAUTIOUS_RESPONSES` - Suspicious behavior reactions
+- `INITIAL_RESPONSES` - First contact replies (confused)
+- `VERIFICATION_RESPONSES` - Account verification scenarios (cautious)
+- `PAYMENT_RESPONSES` - Payment/refund scenarios (skeptical)
+- `FEARFUL_RESPONSES` - When threatened (cooperative)
+- `DETAIL_SEEKING` - Extracting intel (asking for UPI, accounts)
+- `STALLING_RESPONSES` - Buying time (realistic excuses)
+- `NEUTRAL_RESPONSES` - Non-scam messages (polite confusion)
 
 ---
 

@@ -14,9 +14,7 @@ import logging
 
 from app.models import (
     HoneypotRequest,
-    HoneypotResponse,
-    EngagementMetrics,
-    ExtractedIntelligence
+    HoneypotResponse
 )
 from app.auth import verify_api_key
 from app.detector import detector
@@ -96,6 +94,9 @@ async def process_message(
         logger.info(f"[{session_id[:8]}] REQUEST: {json.dumps(request_dict, ensure_ascii=False)}")
         
         # Process conversation history for context
+        # First, update agent's context awareness from history
+        agent.process_conversation_history(session_id, request.conversationHistory)
+        
         for hist_msg in request.conversationHistory:
             if hist_msg.sender == "scammer":
                 detector.calculate_risk_score(hist_msg.text, session_id)
@@ -111,11 +112,13 @@ async def process_message(
             memory.mark_scam_confirmed(session_id)
         
         # Generate internal agent response (not returned to client)
-        if memory.is_scam_confirmed(session_id):
-            msg_count = memory.get_message_count(session_id)
-            internal_response = agent.generate_response(session_id, current_message, msg_count)
-            memory.set_agent_response(session_id, internal_response)
-            memory.add_message(session_id, "agent", internal_response)
+        scam_confirmed = memory.is_scam_confirmed(session_id)
+        msg_count = memory.get_message_count(session_id)
+        
+        # Always generate a reply using get_reply (handles both scam and non-scam)
+        agent_reply = agent.get_reply(session_id, current_message, msg_count, scam_confirmed)
+        memory.set_agent_response(session_id, agent_reply)
+        memory.add_message(session_id, "agent", agent_reply)
         
         # Extract intelligence
         intelligence = extractor.extract(current_message, session_id)
@@ -131,8 +134,7 @@ async def process_message(
         total_messages = len(request.conversationHistory) + 1
         duration_seconds = memory.get_duration(session_id)
         
-        # Generate notes with enhanced detection details
-        scam_confirmed = memory.is_scam_confirmed(session_id)
+        # Generate notes with enhanced detection details (internal use only)
         if scam_confirmed:
             agent_notes = agent.generate_agent_notes(
                 session_id, total_messages, intelligence, detection_details
@@ -151,24 +153,31 @@ async def process_message(
                     memory.mark_callback_sent(session_id)
                     callback_sent = True
         
+        # Build simplified response (only status and reply)
         response = HoneypotResponse(
             status="success",
-            scamDetected=scam_confirmed,
-            engagementMetrics=EngagementMetrics(
-                engagementDurationSeconds=duration_seconds,
-                totalMessagesExchanged=total_messages
-            ),
-            extractedIntelligence=ExtractedIntelligence(
-                bankAccounts=intelligence.get("bankAccounts", []),
-                upiIds=intelligence.get("upiIds", []),
-                phishingLinks=intelligence.get("phishingLinks", []),
-                phoneNumbers=intelligence.get("phoneNumbers", []),
-                suspiciousKeywords=intelligence.get("suspiciousKeywords", [])
-            ),
-            agentNotes=agent_notes
+            reply=agent_reply
         )
         
-        # Log full response body in one line
+        # Internal logging - detection result, intelligence, notes, callback (not exposed in response)
+        internal_log = {
+            "scamDetected": scam_confirmed,
+            "engagementMetrics": {
+                "engagementDurationSeconds": duration_seconds,
+                "totalMessagesExchanged": total_messages
+            },
+            "extractedIntelligence": {
+                "bankAccounts": intelligence.get("bankAccounts", []),
+                "upiIds": intelligence.get("upiIds", []),
+                "phishingLinks": intelligence.get("phishingLinks", []),
+                "phoneNumbers": intelligence.get("phoneNumbers", []),
+                "suspiciousKeywords": intelligence.get("suspiciousKeywords", [])
+            },
+            "agentNotes": agent_notes
+        }
+        logger.info(f"[{session_id[:8]}] INTERNAL: {json.dumps(internal_log, ensure_ascii=False)}")
+        
+        # Log simplified response
         response_dict = response.model_dump()
         logger.info(f"[{session_id[:8]}] RESPONSE: {json.dumps(response_dict, ensure_ascii=False)}")
         logger.info(f"[{session_id[:8]}] CALLBACK: {'sent' if callback_sent else 'not sent'}")
