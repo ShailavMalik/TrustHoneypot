@@ -10,10 +10,15 @@ Phone numbers, bank accounts, UPI IDs - scammers eventually give these up
 when they think they've got a real victim on the hook.
 
 The responses are designed to be believable. No one talks like a robot.
+Stage-aware responses ensure tone changes appropriately:
+- GREETING: Polite but cautious
+- RAPPORT: Slight confusion, clarifying questions  
+- SUSPICION: Ask for details, request documentation
+- EXTRACTION: Ask for payment details, reference numbers
 """
 import random
 from typing import Dict, List, Optional
-from app.detector import detector
+from app.detector import detector, ConversationStage, Intent
 
 
 class HoneypotAgent:
@@ -26,32 +31,99 @@ class HoneypotAgent:
     - Shows concern but doesn't immediately comply
     - Stalls for time with believable excuses
     - Never reveals that we know it's a scam
+    - Changes tone based on conversation stage
     """
     
-    # Neutral responses for non-scam / uncertain cases
-    NEUTRAL_RESPONSES = [
-        "Hello? I think you may have the wrong number.",
-        "Sorry, I'm not sure what this is about. Can you explain?",
-        "I don't recognize this. Who is this?",
-        "I'm not sure I understand. What are you referring to?",
-        "Hmm, I don't recall anything about this. Are you sure you have the right person?",
-        "Ji? Kaun bol raha hai?",
-        "Aap kaun? Main samjha nahi.",
-        "Sorry, wrong number I think. Please check once.",
+    # =========================================================================
+    # STAGE-AWARE RESPONSE POOLS (Section 2 & 3 implementation)
+    # =========================================================================
+    
+    # GREETING_STAGE: Polite but cautious, ask who they are
+    GREETING_STAGE_RESPONSES = [
+        "Hello? I don't think we've spoken before. Who is this?",
+        "Ji? Kaun bol raha hai? I don't recognize this number.",
+        "Hello, may I know who's calling please?",
+        "Sorry, I didn't catch that. Who is this speaking?",
+        "Good day. Can you please introduce yourself? I don't recognize the number.",
+        "Yes, hello? Who am I speaking with?",
+        "Namaste. Aap kaun? I wasn't expecting any calls today.",
+        "Hello, this is unexpected. May I know who you are?",
     ]
     
-    # First contact - we're confused, who is this?
-    INITIAL_RESPONSES = [
-        "Hello? Who is this calling?",
-        "Sorry, I don't understand. What is this regarding?",
-        "I didn't get any notification about this. Are you sure you have the right person?",
-        "What? My account? Which account are you talking about?",
-        "I'm confused. Can you please explain from the beginning?",
-        "Ji? Kaun bol raha hai? Main samjha nahi.",
-        "Wait wait, please speak slowly. I am not understanding properly.",
-        "Hello? Is this some kind of company call? What do you want?",
-        "Arey, I didn't apply for anything. What are you saying?",
-        "One minute, let me sit down first. My knees are paining. Now tell me clearly.",
+    # RAPPORT_STAGE: Slight confusion, ask clarifying questions  
+    RAPPORT_STAGE_RESPONSES = [
+        "I'm a bit confused. Can you explain what this is about?",
+        "Sorry, I don't quite understand. What exactly do you want?",
+        "Wait, I'm not following. Can you please explain from the beginning?",
+        "I'm fine... but can you explain why you contacted me?",
+        "Hmm, this is strange. Why are you calling me specifically?",
+        "I don't recall applying for anything. What is this regarding?",
+        "You've lost me. Can you clarify what you're talking about?",
+        "I'm confused beta. Slow down and explain properly please.",
+    ]
+    
+    # SUSPICION_STAGE: Ask for details, request documentation, question authenticity
+    SUSPICION_STAGE_RESPONSES = [
+        "Is this about my bank account? I didn't receive any official notice.",
+        "This sounds suspicious. Can you send me an official letter or email?",
+        "How do I know this is legitimate? Can you provide documentation?",
+        "I need to verify this. What is your official employee ID number?",
+        "Can you give me a reference number? I want to check with the main office.",
+        "This doesn't sound right. Let me call your official helpline to confirm.",
+        "I'm skeptical. My bank never calls me like this. They always send SMS.",
+        "Before I do anything, I need something in writing. Email or letter please.",
+    ]
+    
+    # EXTRACTION_STAGE: Ask for payment details, reference numbers, UPI/account info
+    EXTRACTION_STAGE_RESPONSES = [
+        "Okay, I understand now. What payment details should I use?",
+        "Fine, I'll do it. What is the UPI ID or account number?",
+        "Alright, tell me the exact amount and where to send it.",
+        "Give me the account number slowly. I am writing it down.",
+        "What is your UPI ID? I'll try sending first to check if it works.",
+        "Which bank account should I transfer to? Give me IFSC code also.",
+        "I have Paytm and PhonePe. Tell me the UPI ID letter by letter.",
+        "Okay, I'm ready to pay. Just tell me the reference number and amount.",
+    ]
+    
+    # =========================================================================
+    # INTENT-SPECIFIC STRUCTURED RESPONSES (Section 3 - Remove vague responses)
+    # =========================================================================
+    
+    # IDENTITY_PROBE responses - when scammer asks who we are
+    IDENTITY_PROBE_RESPONSES = [
+        "I don't think we've spoken before. Who is this?",
+        "You called me, so you should know who I am. Who are you first?",
+        "I don't share my details with unknown callers. Please identify yourself.",
+        "Ji, main yahan hoon. But who is calling and why?",
+        "Why are you asking about me? You called my number.",
+    ]
+    
+    # SMALL_TALK responses - redirect to actual topic
+    SMALL_TALK_RESPONSES = [
+        "I'm fine... but can you explain why you contacted me?",
+        "Yes yes, all good. But what is the purpose of this call?",
+        "Thik hoon. Now please tell me the reason for calling.",
+        "Good, thanks. But why are you calling? What is this about?",
+        "I'm okay. But let's get to the point - what do you want?",
+    ]
+    
+    # TOPIC_PROBE responses - when checking if it's about specific topic
+    TOPIC_PROBE_RESPONSES = [
+        "Is this about my bank account? I didn't receive any official notice.",
+        "What exactly is the issue? I haven't heard anything from my bank.",
+        "Is something wrong with my account? I used ATM yesterday only.",
+        "I don't understand what problem you're referring to. Please explain.",
+        "My bank sends me SMS for everything. I didn't get any message about this.",
+    ]
+    
+    # PAYMENT_REQUEST responses - when they ask for money
+    PAYMENT_REQUEST_RESPONSES = [
+        "Why do I need to transfer money? Can you explain clearly?",
+        "Money? For what? I don't understand why I should pay.",
+        "Why should I send money? This doesn't make sense to me.",
+        "Processing fee? But if you're giving me something, why pay first?",
+        "I don't send money to unknown accounts. Explain the reason properly.",
     ]
     
     # When they mention account issues, verification, KYC
@@ -315,13 +387,16 @@ class HoneypotAgent:
         """
         Generate a believable human response.
         
-        The response depends on:
-        - How many messages we've exchanged
-        - What tactics the scammer is using
+        STAGE-AWARE response generation:
+        - GREETING: Polite but cautious, ask who they are
+        - RAPPORT: Slight confusion, clarifying questions
+        - SUSPICION: Ask for details, documentation, question authenticity
+        - EXTRACTION: Ask for payment details, reference numbers
+        
+        Also adapts to:
+        - Specific scam tactics detected
+        - Intent classification 
         - What we've already said (to avoid repetition)
-        - Conversation escalation level (adapts dynamically)
-        - Previous context from conversation history
-        - Specific scam type detected
         """
         context = self._get_context(session_id)
         tactics = self._detect_tactics(scammer_message)
@@ -330,6 +405,12 @@ class HoneypotAgent:
         # Track last tactic for continuity
         if tactics:
             context["last_tactic"] = tactics[-1]
+        
+        # Get current conversation stage from detector
+        stage = detector.get_conversation_stage(session_id)
+        
+        # Get detected intents for more precise response selection
+        detected_intents = detector.classify_intent(scammer_message)
         
         # Update escalation level based on current message
         if "threat" in tactics or "digital_arrest" in tactics:
@@ -341,57 +422,77 @@ class HoneypotAgent:
         
         escalation = context["escalation_level"]
         
-        # Dynamic response selection based on context and scam type
-        if message_count <= 1:
-            # First message - always confused
-            pool = self.INITIAL_RESPONSES
+        # STAGE-AWARE + INTENT-BASED response selection (Sections 2 & 3)
+        pool = None
+        
+        # First check for specific intents that override stage-based selection
+        if Intent.OTP_REQUEST in detected_intents and message_count > 1:
+            pool = self.OTP_RESPONSES
+        elif Intent.BANK_DETAILS_REQUEST in detected_intents and message_count > 1:
+            pool = self.ACCOUNT_NUMBER_RESPONSES
+        elif Intent.UPI_REQUEST in detected_intents and message_count > 1:
+            pool = self.EXTRACTION_STAGE_RESPONSES
+        elif Intent.IDENTITY_PROBE in detected_intents:
+            pool = self.IDENTITY_PROBE_RESPONSES
         elif "digital_arrest" in tactics:
-            # Digital arrest scam - very common, show extreme fear and compliance
             pool = self.DIGITAL_ARREST_RESPONSES
         elif "courier" in tactics:
-            # Courier/parcel scam - deny knowledge, show confusion
             pool = self.COURIER_RESPONSES
-        elif "otp_request" in tactics:
-            # They want OTP specifically - stall with OTP-related confusion
-            pool = self.OTP_RESPONSES
-        elif "account_request" in tactics:
-            # They want account number - stall looking for passbook/details
-            pool = self.ACCOUNT_NUMBER_RESPONSES
         elif "credential" in tactics:
-            # They want other credentials (PIN, CVV, password)
             pool = self.TECH_CONFUSION_RESPONSES
-        elif escalation >= 3 or "threat" in tactics:
-            # They're threatening - show fear
-            if message_count > 4 and random.random() > 0.4:
-                # Sometimes show compliance after extended fear
-                pool = self.COMPLIANT_RESPONSES
+        
+        # If no specific intent/tactic match, use stage-based responses
+        if pool is None:
+            if stage == ConversationStage.GREETING_STAGE or message_count <= 1:
+                pool = self.GREETING_STAGE_RESPONSES
+            elif stage == ConversationStage.RAPPORT_STAGE:
+                # Mix of rapport responses and intent-specific
+                if Intent.SMALL_TALK in detected_intents:
+                    pool = self.SMALL_TALK_RESPONSES
+                elif Intent.PAYMENT_REQUEST in detected_intents:
+                    pool = self.PAYMENT_REQUEST_RESPONSES
+                else:
+                    pool = self.RAPPORT_STAGE_RESPONSES
+            elif stage == ConversationStage.SUSPICION_STAGE:
+                # Ask for documentation, question authenticity
+                if "threat" in tactics:
+                    pool = self.FEARFUL_RESPONSES
+                elif "verification" in tactics:
+                    pool = self.SUSPICION_STAGE_RESPONSES
+                else:
+                    pool = self.SUSPICION_STAGE_RESPONSES
+            elif stage == ConversationStage.EXTRACTION_STAGE:
+                # High risk, extract payment details
+                if "threat" in tactics and random.random() > 0.4:
+                    pool = self.COMPLIANT_RESPONSES
+                elif "payment_request" in tactics:
+                    pool = self.EXTRACTION_STAGE_RESPONSES
+                else:
+                    pool = self.DETAIL_SEEKING
+                context["intel_requested"] = True
             else:
-                pool = self.FEARFUL_RESPONSES
-        elif context["intel_requested"] or message_count > 5:
-            # We've been engaging a while - mix of detail seeking and tech confusion
-            if random.random() > 0.5:
-                pool = self.DETAIL_SEEKING
-            else:
-                pool = self.TECH_CONFUSION_RESPONSES
-        elif "payment_request" in tactics or escalation >= 2:
-            # They want money/payment - time to extract intel
-            pool = self.DETAIL_SEEKING
-            context["intel_requested"] = True
-        elif "payment_lure" in tactics:
-            # They're offering money - be skeptical but curious
-            pool = self.PAYMENT_RESPONSES
-        elif "verification" in tactics:
-            # They want to verify something - be cautious
-            pool = self.VERIFICATION_RESPONSES
-        elif "urgency" in tactics and escalation >= 1:
-            # Urgent but not threatening - stall
-            pool = self.STALLING_RESPONSES
-        else:
-            # Default - mix of stalling and verification
-            if random.random() > 0.5:
-                pool = self.STALLING_RESPONSES
-            else:
-                pool = self.VERIFICATION_RESPONSES
+                # Fallback based on escalation
+                if escalation >= 3 or "threat" in tactics:
+                    if message_count > 4 and random.random() > 0.4:
+                        pool = self.COMPLIANT_RESPONSES
+                    else:
+                        pool = self.FEARFUL_RESPONSES
+                elif context["intel_requested"] or message_count > 5:
+                    if random.random() > 0.5:
+                        pool = self.DETAIL_SEEKING
+                    else:
+                        pool = self.TECH_CONFUSION_RESPONSES
+                elif "payment_request" in tactics or escalation >= 2:
+                    pool = self.DETAIL_SEEKING
+                    context["intel_requested"] = True
+                elif "payment_lure" in tactics:
+                    pool = self.PAYMENT_RESPONSES
+                elif "verification" in tactics:
+                    pool = self.VERIFICATION_RESPONSES
+                elif "urgency" in tactics:
+                    pool = self.STALLING_RESPONSES
+                else:
+                    pool = self.RAPPORT_STAGE_RESPONSES
         
         # Avoid repeating the same response
         available = [r for r in pool if r not in context["responses_given"]]
@@ -498,27 +599,41 @@ class HoneypotAgent:
         if score == 0:
             return "Monitoring conversation. No suspicious patterns detected yet."
         elif confidence < 0.5:
-            return f"{risk_emoji} Monitoring. Risk score: {score} (threshold: 30). Confidence: {confidence*100:.0f}%"
+            return f"{risk_emoji} Monitoring. Risk score: {score} (threshold: 60). Confidence: {confidence*100:.0f}%"
         else:
-            return f"{risk_emoji} Suspicious activity detected. Score: {score}. Awaiting confirmation threshold."
+            return f"{risk_emoji} Suspicious activity detected. Score: {score}. Awaiting confirmation threshold (60)."
     
     def generate_neutral_response(self, session_id: str, scammer_message: str = "") -> str:
         """
         Generate a neutral response for non-scam or uncertain cases.
         
-        Returns a cautious, human-like reply without revealing detection status.
+        Returns a cautious, human-like reply based on stage and intent.
+        Uses structured persona responses instead of vague replies.
         """
         context = self._get_context(session_id)
         
-        # Still analyze tactics even for non-scam to stay contextual
+        # Analyze intents even for non-scam to stay contextual
+        detected_intents = []
         if scammer_message:
             tactics = self._detect_tactics(scammer_message)
             context["detected_tactics"].update(tactics)
             context["conversation_history"].append({"role": "scammer", "text": scammer_message})
+            detected_intents = detector.classify_intent(scammer_message)
         
-        available = [r for r in self.NEUTRAL_RESPONSES if r not in context["responses_given"]]
+        # Select appropriate pool based on detected intent (avoid vague responses)
+        if Intent.IDENTITY_PROBE in detected_intents:
+            pool = self.IDENTITY_PROBE_RESPONSES
+        elif Intent.SMALL_TALK in detected_intents:
+            pool = self.SMALL_TALK_RESPONSES
+        elif Intent.GREETING in detected_intents or Intent.SELF_INTRO in detected_intents:
+            pool = self.GREETING_STAGE_RESPONSES
+        else:
+            # Default to greeting stage (polite but cautious)
+            pool = self.GREETING_STAGE_RESPONSES
+        
+        available = [r for r in pool if r not in context["responses_given"]]
         if not available:
-            available = self.NEUTRAL_RESPONSES
+            available = pool
         
         response = random.choice(available)
         context["responses_given"].append(response)

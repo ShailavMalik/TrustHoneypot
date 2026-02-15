@@ -33,22 +33,28 @@ class IntelligenceExtractor:
     """
     
     # =========================================================================
-    # UPI ID PATTERNS - Covers all major Indian payment apps
+    # UPI ID PATTERNS - Covers all major Indian payment apps (ENHANCED)
     # =========================================================================
     
-    # Known UPI handles (major banks and payment apps)
+    # Known UPI handles (major banks and payment apps) - Extended list
     UPI_HANDLES = [
+        # Payment apps
         "paytm", "ybl", "okaxis", "oksbi", "okhdfcbank", "okicici",
         "axl", "ibl", "upi", "apl", "rapl", "waaxis", "wahdfcbank",
         "waicici", "wasbi", "ikwik", "freecharge", "airtel", "jio",
-        "pingpay", "slice", "amazonpay", "axisb", "sbi", "hdfc",
-        "icici", "kotak", "indus", "federal", "idbi", "pnb", "bob",
-        "union", "canara", "boi", "cbi", "iob", "jupiter", "fi",
-        "groww", "cred", "bharatpe", "navi", "mobikwik", "postpe"
+        "pingpay", "slice", "amazonpay", "postpe",
+        # Major banks
+        "axisb", "sbi", "hdfc", "icici", "kotak", "indus", "federal", 
+        "idbi", "pnb", "bob", "union", "canara", "boi", "cbi", "iob",
+        # Fintech
+        "jupiter", "fi", "groww", "cred", "bharatpe", "navi", "mobikwik",
+        # Additional handles
+        "yesbank", "rbl", "dbs", "hsbc", "scb", "citi", "barodapay",
+        "aubank", "bandhan", "payzapp", "phonepe", "gpay", "googlepay"
     ]
     
     UPI_PATTERN = r'\b[\w\.\-]+@(' + '|'.join(UPI_HANDLES) + r')\b'
-    UPI_GENERIC_PATTERN = r'\b[\w\.\-]{3,}@[a-z]{2,15}\b'
+    UPI_GENERIC_PATTERN = r'\b[\w\.\-]{3,}@[a-z]{2,20}\b'
     
     # =========================================================================
     # BANK ACCOUNT PATTERNS
@@ -61,15 +67,18 @@ class IntelligenceExtractor:
     IFSC_PATTERN = r'\b[A-Z]{4}0[A-Z0-9]{6}\b'
     
     # =========================================================================
-    # PHONE NUMBER PATTERNS - Multiple Indian formats
+    # PHONE NUMBER PATTERNS - Multiple Indian formats (ENHANCED)
     # =========================================================================
     
     PHONE_PATTERNS = [
-        r'\+91[\s\-]?[6-9]\d{9}\b',      # +91 9876543210
-        r'\b91[\s\-]?[6-9]\d{9}\b',       # 91 9876543210
-        r'\b[6-9]\d{9}\b',                 # 9876543210
-        r'\b[6-9]\d{4}[\s\-]?\d{5}\b',    # 98765-43210 or 98765 43210
-        r'\(\+91\)[\s\-]?[6-9]\d{9}',     # (+91) 9876543210
+        r'\+91[\s\-]?[6-9]\d{9}\b',          # +91 9876543210
+        r'\b91[\s\-]?[6-9]\d{9}\b',           # 91 9876543210
+        r'\b0[6-9]\d{9}\b',                    # 09876543210
+        r'\b[6-9]\d{9}\b',                     # 9876543210
+        r'\b[6-9]\d{4}[\s\-]?\d{5}\b',        # 98765-43210 or 98765 43210
+        r'\b[6-9]\d{2}[\s\-]?\d{3}[\s\-]?\d{4}\b',  # 987-654-3210
+        r'\(\+91\)[\s\-]?[6-9]\d{9}',         # (+91) 9876543210
+        r'\b[6-9]\d{4}\s?\d{5}\b',            # 98765 43210 (with space)
     ]
     
     # =========================================================================
@@ -104,18 +113,39 @@ class IntelligenceExtractor:
     }
     
     # =========================================================================
-    # URL/LINK PATTERNS
+    # URL/LINK PATTERNS - ENHANCED with shortened URL support
     # =========================================================================
     
     URL_PATTERNS = [
+        # Standard URLs
         r'https?://[^\s<>"{}|\\^`\[\]]+',
-        r'bit\.ly/[a-zA-Z0-9]+',
-        r'tinyurl\.com/[a-zA-Z0-9]+',
+        
+        # URL shorteners - ENHANCED detection
+        r'bit\.ly/[a-zA-Z0-9\-_]+',
+        r'tinyurl\.com/[a-zA-Z0-9\-_]+',
         r'goo\.gl/[a-zA-Z0-9]+',
         r't\.co/[a-zA-Z0-9]+',
         r'rb\.gy/[a-zA-Z0-9]+',
+        r'is\.gd/[a-zA-Z0-9]+',
+        r'v\.gd/[a-zA-Z0-9]+',
+        r'ow\.ly/[a-zA-Z0-9]+',
+        r'buff\.ly/[a-zA-Z0-9]+',
+        r'j\.mp/[a-zA-Z0-9]+',
+        r'cutt\.ly/[a-zA-Z0-9]+',
+        r'tiny\.cc/[a-zA-Z0-9]+',
+        r'shorturl\.at/[a-zA-Z0-9]+',
+        
+        # Messaging app links
         r'wa\.me/[0-9]+',  # WhatsApp links
         r't\.me/[a-zA-Z0-9_]+',  # Telegram links
+        
+        # Suspicious TLDs
+        r'[a-z0-9]{4,}\.xyz[^\s]*',
+        r'[a-z0-9]{4,}\.top[^\s]*',
+        r'[a-z0-9]{4,}\.online[^\s]*',
+        r'[a-z0-9]{4,}\.site[^\s]*',
+        r'[a-z0-9]{4,}\.work[^\s]*',
+        r'[a-z0-9]{4,}\.click[^\s]*',
     ]
     
     # =========================================================================

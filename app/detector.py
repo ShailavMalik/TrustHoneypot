@@ -4,19 +4,62 @@ Advanced Scam Detection Engine with Multi-Signal Analysis.
 This is a sophisticated detection system that goes beyond simple keyword matching.
 It uses multiple detection strategies working together:
 
-1. Weighted keyword scoring (base detection)
-2. Pattern combination analysis (multiple signals = exponential risk)
-3. India-specific scam templates (RBI, Aadhaar, PAN, govt impersonation)
-4. Behavioral analysis (escalation patterns, urgency ramps)
-5. Confidence scoring (not just yes/no, but how confident we are)
-6. Scam type classification (identifies the specific scam variant)
+1. Lightweight intent classification (regex + keyword clusters)
+2. Weighted keyword scoring with cumulative risk
+3. Pattern combination analysis (multiple signals = exponential risk)
+4. India-specific scam templates (RBI, Aadhaar, PAN, govt impersonation)
+5. Stage-aware detection (GREETING -> RAPPORT -> SUSPICION -> EXTRACTION)
+6. Confidence scoring (not just yes/no, but how confident we are)
+7. Scam type classification (identifies the specific scam variant)
 
 This multi-layered approach catches sophisticated scammers who try to
 avoid obvious keywords while still exhibiting scam behavior patterns.
 """
 import re
-from typing import Tuple, Dict, List, Set
+from typing import Tuple, Dict, List, Set, Optional
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Intent(Enum):
+    """Detected intent types with weighted risk scores."""
+    GREETING = "GREETING"
+    SELF_INTRO = "SELF_INTRO"
+    IDENTITY_PROBE = "IDENTITY_PROBE"
+    SMALL_TALK = "SMALL_TALK"
+    PAYMENT_REQUEST = "PAYMENT_REQUEST"
+    BANK_DETAILS_REQUEST = "BANK_DETAILS_REQUEST"
+    OTP_REQUEST = "OTP_REQUEST"
+    UPI_REQUEST = "UPI_REQUEST"
+    URGENCY = "URGENCY"
+    LEGAL_THREAT = "LEGAL_THREAT"
+    ACCOUNT_SUSPENSION = "ACCOUNT_SUSPENSION"
+    UNKNOWN = "UNKNOWN"
+
+
+class ConversationStage(Enum):
+    """Conversation stages for stage-aware responses."""
+    GREETING_STAGE = "GREETING_STAGE"
+    RAPPORT_STAGE = "RAPPORT_STAGE"
+    SUSPICION_STAGE = "SUSPICION_STAGE"
+    EXTRACTION_STAGE = "EXTRACTION_STAGE"
+
+
+# Intent weight scores per requirement
+INTENT_WEIGHTS = {
+    Intent.GREETING: 0,
+    Intent.SELF_INTRO: 0,
+    Intent.SMALL_TALK: 0,
+    Intent.URGENCY: 25,
+    Intent.PAYMENT_REQUEST: 40,
+    Intent.UPI_REQUEST: 45,
+    Intent.OTP_REQUEST: 50,
+    Intent.BANK_DETAILS_REQUEST: 45,
+    Intent.LEGAL_THREAT: 30,
+    Intent.ACCOUNT_SUSPENSION: 35,
+    Intent.IDENTITY_PROBE: 5,
+    Intent.UNKNOWN: 0,
+}
 
 
 @dataclass
@@ -29,6 +72,8 @@ class DetectionResult:
     scam_type: str = "unknown"
     detected_patterns: List[str] = field(default_factory=list)
     triggered_categories: Set[str] = field(default_factory=set)
+    detected_intents: List[Intent] = field(default_factory=list)
+    conversation_stage: ConversationStage = ConversationStage.GREETING_STAGE
 
 
 class ScamDetector:
@@ -36,12 +81,105 @@ class ScamDetector:
     Advanced multi-signal scam detection engine.
     
     Uses a layered approach:
-    - Layer 1: Keyword scoring (base signals)
-    - Layer 2: Pattern combinations (compound signals)
-    - Layer 3: India-specific patterns (regional context)
-    - Layer 4: Behavioral analysis (message patterns)
-    - Layer 5: Confidence calibration (certainty scoring)
+    - Layer 1: Intent classification (regex + keywords)
+    - Layer 2: Keyword scoring (base signals)
+    - Layer 3: Pattern combinations (compound signals)
+    - Layer 4: India-specific patterns (regional context)
+    - Layer 5: Stage-aware detection
+    - Layer 6: Confidence calibration (certainty scoring)
     """
+    
+    # =========================================================================
+    # LAYER 0: INTENT CLASSIFICATION PATTERNS
+    # =========================================================================
+    
+    # Greeting patterns (score: 0)
+    GREETING_PATTERNS = [
+        r'\b(hello|hi|hey|namaste|namaskar|good\s*(morning|afternoon|evening|day))\b',
+        r'\b(greetings|howdy|hola|salaam|jai\s*hind)\b',
+        r'^(hi|hello|hey|ji)\s*[,!.]?\s*$',
+    ]
+    
+    # Self introduction patterns (score: 0)
+    SELF_INTRO_PATTERNS = [
+        r'\b(i\s*am|my\s*name\s*is|this\s*is|speaking|calling\s*from)\b',
+        r'\b(mera\s*naam|main\s*bol\s*raha)\b',
+        r'\b(officer|inspector|manager|executive|agent)\s+(speaking|here)\b',
+    ]
+    
+    # Identity probe patterns (score: 5)
+    IDENTITY_PROBE_PATTERNS = [
+        r'\b(who\s*(is\s*this|are\s*you)|your\s*name|aap\s*kaun)\b',
+        r'\b(confirm\s*your\s*(identity|name)|verify\s*yourself)\b',
+        r'\b(is\s*this\s*mr|is\s*this\s*mrs|am\s*i\s*speaking\s*to)\b',
+    ]
+    
+    # Small talk patterns (score: 0)
+    SMALL_TALK_PATTERNS = [
+        r'\b(how\s*are\s*you|kaise\s*ho|what\'?s\s*up|hope\s*you\'?re\s*well)\b',
+        r'\b(nice\s*to\s*(meet|talk)|good\s*to\s*hear|hope\s*you\'?re\s*fine)\b',
+        r'\b(weather|family\s*is\s*fine|doing\s*well)\b',
+    ]
+    
+    # Payment request patterns (score: 40)
+    PAYMENT_REQUEST_PATTERNS = [
+        r'\b(send|transfer|pay)\s*(me|us|the|now|₹|\d+)\b',
+        r'\b(payment|amount|money)\s*(of|is|due|required)\b',
+        r'\b(processing\s*fee|registration\s*fee|advance\s*payment)\b',
+        r'\b(pay\s*now|transfer\s*now|send\s*money)\b',
+        r'\b(paisa\s*(bhejo|do)|paise\s*(transfer|send))\b',
+    ]
+    
+    # Bank details request patterns (score: 45)
+    BANK_DETAILS_PATTERNS = [
+        r'\b(bank\s*account|account\s*number|a/c\s*(no|number))\b',
+        r'\b(ifsc|cvv|card\s*number|debit\s*card|credit\s*card)\b',
+        r'\b(share\s*(your\s*)?(bank|account|card))\b',
+        r'\b(account\s*details|banking\s*details|passbook)\b',
+    ]
+    
+    # OTP request patterns (score: 50)
+    OTP_REQUEST_PATTERNS = [
+        r'\b(otp|one\s*time\s*password|verification\s*code)\b',
+        r'\b(share\s*(the\s*)?otp|send\s*(me\s*)?otp|tell\s*(me\s*)?otp)\b',
+        r'\b(\d\s*digit\s*(code|otp|password))\b',
+        r'\b(enter\s*(the\s*)?otp|otp\s*(bhejo|do|batao))\b',
+    ]
+    
+    # UPI request patterns (score: 45)
+    UPI_REQUEST_PATTERNS = [
+        r'\b(upi\s*id|upi\s*address|bhim|phonepe|paytm|gpay|googlepay)\b',
+        r'\b(send\s*(via|through|to)\s*upi)\b',
+        r'\b(@paytm|@ybl|@oksbi|@okaxis|@okicici|@upi)\b',
+        r'\b(scan\s*(the\s*)?(qr|code)|upi\s*transfer)\b',
+    ]
+    
+    # Urgency patterns (score: 25)
+    URGENCY_PATTERNS = [
+        r'\b(urgent|urgently|immediate|immediately|right\s*now|asap)\b',
+        r'\b(hurry|quickly|fast|jaldi|turant|abhi)\b',
+        r'\b(within\s*\d+\s*(hour|minute|min)|today\s*only)\b',
+        r'\b(last\s*chance|final\s*(notice|warning)|expire)\b',
+        r'\b(deadline|time\s*(running|left)|before\s*\d+)\b',
+    ]
+    
+    # Legal threat patterns (score: 30)
+    LEGAL_THREAT_PATTERNS = [
+        r'\b(legal\s*action|police|arrest|jail|court|case)\b',
+        r'\b(warrant|fir|complaint|cyber\s*crime|fraud\s*case)\b',
+        r'\b(cbi|ed|enforcement|investigation)\b',
+        r'\b(penalty|fine|prosecution|imprison)\b',
+        r'\b(digital\s*arrest|video\s*call\s*arrest)\b',
+    ]
+    
+    # Account suspension patterns (score: 35)
+    ACCOUNT_SUSPENSION_PATTERNS = [
+        r'\b(account\s*(will\s*be\s*)?(suspend|block|deactivate|freeze))\b',
+        r'\b((suspend|block|deactivat|terminat)(ed|ion|ing))\b',
+        r'\b(kyc\s*(update|expire|fail)|re-?kyc|ekyc)\b',
+        r'\b(sim\s*(block|deactivate)|number\s*(block|suspend))\b',
+        r'\b(aadhaar\s*(block|suspend)|pan\s*(block|suspend))\b',
+    ]
     
     # =========================================================================
     # LAYER 1: WEIGHTED KEYWORD SCORING
@@ -243,9 +381,9 @@ class ScamDetector:
     # THRESHOLDS AND CONFIGURATION
     # =========================================================================
     
-    SCAM_THRESHOLD = 30  # Base threshold
-    HIGH_CONFIDENCE_THRESHOLD = 60  # Very confident it's a scam
-    CRITICAL_THRESHOLD = 100  # Definitely a scam
+    SCAM_THRESHOLD = 60  # Updated: Only mark scam when risk_score >= 60
+    HIGH_CONFIDENCE_THRESHOLD = 80  # Very confident it's a scam
+    CRITICAL_THRESHOLD = 120  # Definitely a scam
     
     # Category bonuses (hitting multiple categories = higher confidence)
     MULTI_CATEGORY_BONUS = {
@@ -260,6 +398,72 @@ class ScamDetector:
         self.session_details: Dict[str, DetectionResult] = {}
         self.session_categories: Dict[str, Set[str]] = {}
         self.session_message_count: Dict[str, int] = {}
+        # New: Track intents and stages per session
+        self.session_intents: Dict[str, List[Intent]] = {}
+        self.session_stages: Dict[str, ConversationStage] = {}
+    
+    def classify_intent(self, text: str) -> List[Intent]:
+        """
+        Classify message intent using regex patterns and keyword clusters.
+        Returns list of detected intents (can have multiple).
+        """
+        intents = []
+        text_lower = text.lower()
+        
+        # Check each intent pattern
+        intent_patterns = [
+            (Intent.GREETING, self.GREETING_PATTERNS),
+            (Intent.SELF_INTRO, self.SELF_INTRO_PATTERNS),
+            (Intent.IDENTITY_PROBE, self.IDENTITY_PROBE_PATTERNS),
+            (Intent.SMALL_TALK, self.SMALL_TALK_PATTERNS),
+            (Intent.PAYMENT_REQUEST, self.PAYMENT_REQUEST_PATTERNS),
+            (Intent.BANK_DETAILS_REQUEST, self.BANK_DETAILS_PATTERNS),
+            (Intent.OTP_REQUEST, self.OTP_REQUEST_PATTERNS),
+            (Intent.UPI_REQUEST, self.UPI_REQUEST_PATTERNS),
+            (Intent.URGENCY, self.URGENCY_PATTERNS),
+            (Intent.LEGAL_THREAT, self.LEGAL_THREAT_PATTERNS),
+            (Intent.ACCOUNT_SUSPENSION, self.ACCOUNT_SUSPENSION_PATTERNS),
+        ]
+        
+        for intent, patterns in intent_patterns:
+            for pattern in patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    if intent not in intents:
+                        intents.append(intent)
+                    break
+        
+        return intents if intents else [Intent.UNKNOWN]
+    
+    def get_intent_score(self, intents: List[Intent]) -> int:
+        """Calculate weighted risk score from detected intents."""
+        return sum(INTENT_WEIGHTS.get(intent, 0) for intent in intents)
+    
+    def determine_stage(self, session_id: str, risk_score: int, message_count: int) -> ConversationStage:
+        """
+        Determine conversation stage based on risk score and message count.
+        
+        Stage progression:
+        - GREETING_STAGE: Initial contact (msg <= 2, score < 30)
+        - RAPPORT_STAGE: Building rapport (msg <= 4 or score < 50)
+        - SUSPICION_STAGE: Suspicious activity (score 50-80)
+        - EXTRACTION_STAGE: High risk, extract intel (score >= 80)
+        """
+        if message_count <= 2 and risk_score < 30:
+            return ConversationStage.GREETING_STAGE
+        elif message_count <= 4 or risk_score < 50:
+            return ConversationStage.RAPPORT_STAGE
+        elif risk_score < 80:
+            return ConversationStage.SUSPICION_STAGE
+        else:
+            return ConversationStage.EXTRACTION_STAGE
+    
+    def get_conversation_stage(self, session_id: str) -> ConversationStage:
+        """Get current conversation stage for a session."""
+        return self.session_stages.get(session_id, ConversationStage.GREETING_STAGE)
+    
+    def get_session_intents(self, session_id: str) -> List[Intent]:
+        """Get all detected intents for a session."""
+        return self.session_intents.get(session_id, [])
     
     def _check_keywords(self, text: str, keyword_dict: dict, category: str, 
                         categories: set) -> int:
@@ -360,10 +564,18 @@ class ScamDetector:
         if session_id not in self.session_categories:
             self.session_categories[session_id] = set()
             self.session_message_count[session_id] = 0
+            self.session_intents[session_id] = []
         
         self.session_message_count[session_id] += 1
+        message_count = self.session_message_count[session_id]
         categories = self.session_categories[session_id]
         message_score = 0
+        
+        # LAYER 0: Intent classification (NEW - lightweight)
+        detected_intents = self.classify_intent(text)
+        self.session_intents[session_id].extend(detected_intents)
+        intent_score = self.get_intent_score(detected_intents)
+        message_score += intent_score
         
         # LAYER 1: Keyword scoring
         all_keyword_dicts = [
@@ -405,14 +617,21 @@ class ScamDetector:
         self.session_scores[session_id] += message_score
         total_score = self.session_scores[session_id]
         
+        # LAYER 6: Stage-aware detection
+        stage = self.determine_stage(session_id, total_score, message_count)
+        self.session_stages[session_id] = stage
+        
         # Calculate confidence and risk level
         confidence = self._calculate_confidence(
             total_score, num_categories, len(pattern_matches)
         )
         risk_level = self._get_risk_level(total_score, confidence)
+        
+        # IMPORTANT: Only mark as scam when risk_score >= 60 (SCAM_THRESHOLD)
+        # This prevents false positives on greetings/small talk
         is_scam = total_score >= self.SCAM_THRESHOLD
         
-        # Store detailed result
+        # Store detailed result with intents and stage
         self.session_details[session_id] = DetectionResult(
             total_score=total_score,
             is_scam=is_scam,
@@ -420,7 +639,9 @@ class ScamDetector:
             risk_level=risk_level,
             scam_type=scam_type if scam_type != "unknown" else self._infer_scam_type(categories),
             detected_patterns=pattern_matches,
-            triggered_categories=categories.copy()
+            triggered_categories=categories.copy(),
+            detected_intents=list(set(self.session_intents[session_id])),
+            conversation_stage=stage
         )
         
         return total_score, is_scam
@@ -464,6 +685,10 @@ class ScamDetector:
             del self.session_categories[session_id]
         if session_id in self.session_message_count:
             del self.session_message_count[session_id]
+        if session_id in self.session_intents:
+            del self.session_intents[session_id]
+        if session_id in self.session_stages:
+            del self.session_stages[session_id]
 
 
 # Single instance used across the app
