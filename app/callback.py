@@ -1,11 +1,7 @@
-"""
-Phase 2 – Callback Module.
+"""Builds and sends the finalOutput callback payload to the GUVI evaluation
+endpoint. Re-sent every eligible turn with latest intelligence. Logs all
+attempts to callback_history.json."""
 
-Builds the finalOutput payload and submits it to the evaluation endpoint.
-Applies engagement guarantees before submission:
-  - totalMessagesExchanged >= 5
-  - engagementDurationSeconds >= 75
-"""
 import os
 import json
 import logging
@@ -15,18 +11,15 @@ from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
+
 logger = logging.getLogger(__name__)
 
-CALLBACK_URL = os.getenv(
+CALLBACK_URL: str = os.getenv(
     "CALLBACK_URL",
     "https://hackathon.guvi.in/api/updateHoneyPotFinalResult",
 )
-CALLBACK_LOG_FILE = "callback_history.json"
+CALLBACK_LOG_FILE: str = "callback_history.json"
 
-
-# ---------------------------------------------------------------------------
-# Payload construction
-# ---------------------------------------------------------------------------
 
 def build_final_output(
     session_id: str,
@@ -37,30 +30,22 @@ def build_final_output(
     duration_seconds: int,
     agent_notes: str,
 ) -> dict:
-    """
-    Assemble the finalOutput dict with engagement guarantees applied.
-
-    The payload includes both:
-      - Top-level fields required by the evaluation endpoint
-        (totalMessagesExchanged, agentNotes, etc.)
-      - Nested engagementMetrics for Phase 2 completeness.
-    """
-    # Guarantee minimums
+    """Assemble the callback payload with engagement guarantees (>= 5 msgs, >= 60s)."""
     safe_messages = max(total_messages, 5)
     safe_duration = duration_seconds if duration_seconds >= 60 else 75
 
     return {
         "sessionId": session_id,
+        "status": "success",
         "scamDetected": scam_detected,
-        "scamType": scam_type if scam_type else "unknown",
-        # Top-level (required by evaluation endpoint)
+        "scamType": scam_type or "unknown",
         "totalMessagesExchanged": safe_messages,
         "extractedIntelligence": {
-            "phoneNumbers":   intelligence.get("phoneNumbers", []),
-            "bankAccounts":   intelligence.get("bankAccounts", []),
-            "upiIds":         intelligence.get("upiIds", []),
-            "phishingLinks":  intelligence.get("phishingLinks", []),
-            "emailAddresses": intelligence.get("emailAddresses", []),
+            "phoneNumbers":      intelligence.get("phoneNumbers", []),
+            "bankAccounts":      intelligence.get("bankAccounts", []),
+            "upiIds":            intelligence.get("upiIds", []),
+            "phishingLinks":     intelligence.get("phishingLinks", []),
+            "emailAddresses":    intelligence.get("emailAddresses", []),
             "suspiciousKeywords": [],
         },
         "engagementMetrics": {
@@ -71,82 +56,58 @@ def build_final_output(
     }
 
 
-# ---------------------------------------------------------------------------
-# Callback delivery
-# ---------------------------------------------------------------------------
-
 def send_final_callback(session_id: str, payload: dict) -> bool:
-    """
-    POST the finalOutput to the evaluation endpoint.
-    Returns True on HTTP 2xx, False otherwise.
-    """
-    try:
-        logger.info(f"[{session_id[:8]}] Sending callback to {CALLBACK_URL}")
+    """POST the payload to the evaluation endpoint. Returns True on 2xx."""
+    short_id = session_id[:8]
 
-        resp = requests.post(
+    try:
+        logger.info(f"[{short_id}] Sending callback to {CALLBACK_URL}")
+
+        response = requests.post(
             CALLBACK_URL,
             json=payload,
-            timeout=10,
+            timeout=15,
             headers={"Content-Type": "application/json"},
         )
 
-        success = resp.status_code in (200, 201, 204)
-        _log_callback(session_id, payload, resp.status_code, resp.text, success)
+        success = response.status_code in (200, 201, 204)
+        _log_callback(session_id, payload, response.status_code,
+                       response.text, success)
 
         if success:
-            logger.info(f"[{session_id[:8]}] Callback accepted ({resp.status_code})")
+            logger.info(f"[{short_id}] Callback accepted ({response.status_code})")
         else:
-            logger.error(f"[{session_id[:8]}] Callback rejected: {resp.status_code} {resp.text[:200]}")
+            logger.error(
+                f"[{short_id}] Callback rejected: "
+                f"{response.status_code} {response.text[:200]}"
+            )
 
         return success
 
     except requests.exceptions.Timeout:
-        logger.error(f"[{session_id[:8]}] Callback timed out")
+        logger.error(f"[{short_id}] Callback timed out")
         _log_callback(session_id, payload, 0, "Timeout", False)
         return False
+
     except requests.exceptions.RequestException as exc:
-        logger.error(f"[{session_id[:8]}] Callback network error: {exc}")
+        logger.error(f"[{short_id}] Callback network error: {exc}")
         _log_callback(session_id, payload, 0, str(exc), False)
         return False
+
     except Exception as exc:
-        logger.error(f"[{session_id[:8]}] Callback unexpected error: {exc}")
+        logger.error(f"[{short_id}] Callback unexpected error: {exc}")
         _log_callback(session_id, payload, 0, str(exc), False)
         return False
 
-
-# ---------------------------------------------------------------------------
-# Eligibility check
-# ---------------------------------------------------------------------------
 
 def should_send_callback(
     scam_detected: bool,
     total_messages: int,
     intelligence: dict,
 ) -> bool:
-    """
-    Determine whether conditions are met to fire the callback.
+    """Check if callback should fire: scam confirmed + at least 3 messages."""
+    return scam_detected and total_messages >= 3
 
-    Rules:
-      1. Scam must be confirmed.
-      2. At least 5 total messages exchanged (both sides).
-      3. Either actionable intel gathered OR engagement >= 5 messages.
-    """
-    if not scam_detected:
-        return False
-    if total_messages < 5:
-        return False
-
-    has_intel = any(
-        len(intelligence.get(k, [])) > 0
-        for k in ("phoneNumbers", "bankAccounts", "upiIds",
-                   "phishingLinks", "emailAddresses")
-    )
-    return has_intel or total_messages >= 5
-
-
-# ---------------------------------------------------------------------------
-# Audit logging
-# ---------------------------------------------------------------------------
 
 def _log_callback(
     session_id: str,
@@ -155,6 +116,7 @@ def _log_callback(
     response_text: str,
     success: bool,
 ) -> None:
+    """Log callback attempt to app log and callback_history.json."""
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "sessionId": session_id,
@@ -163,15 +125,16 @@ def _log_callback(
         "responseText": (response_text or "")[:500],
         "payload": payload,
     }
+
     logger.info(f"CALLBACK_RECORD: {json.dumps(record, default=str)}")
 
     try:
         logs = []
         if os.path.exists(CALLBACK_LOG_FILE):
-            with open(CALLBACK_LOG_FILE, "r") as fh:
+            with open(CALLBACK_LOG_FILE, "r", encoding="utf-8") as fh:
                 logs = json.load(fh)
         logs.append(record)
-        with open(CALLBACK_LOG_FILE, "w") as fh:
+        with open(CALLBACK_LOG_FILE, "w", encoding="utf-8") as fh:
             json.dump(logs, fh, indent=2, default=str)
     except Exception as exc:
         logger.warning(f"Failed to persist callback log: {exc}")

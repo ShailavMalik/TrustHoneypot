@@ -1,46 +1,59 @@
-"""
-Pydantic data models for the Honeypot API (Phase 2).
-Strict validation with permissive defaults for evaluation compatibility.
-"""
+"""Pydantic request/response models for the Honeypot API."""
+
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, Union
 
 
 class Message(BaseModel):
-    """A single message in the conversation."""
+    """Single chat message in a conversation."""
+
     model_config = ConfigDict(extra="ignore")
+
     sender: Optional[str] = Field(default="scammer")
-    text: str
-    timestamp: Optional[Union[str, int]] = None
+    text: str = Field(...)
+    timestamp: Optional[Union[str, int]] = Field(default=None)
 
     @field_validator("timestamp", mode="before")
     @classmethod
-    def convert_timestamp(cls, v):
-        if isinstance(v, (int, float)):
-            return str(int(v))
-        return v
+    def _coerce_timestamp(cls, value):
+        """Evaluator sometimes sends epoch ints — normalize to string."""
+        if isinstance(value, (int, float)):
+            return str(int(value))
+        return value
 
 
 class Metadata(BaseModel):
-    """Optional context about the message channel."""
+    """Optional channel/locale context (informational only)."""
+
     model_config = ConfigDict(extra="ignore")
-    channel: str = "SMS"
-    language: str = "English"
-    locale: str = "IN"
+
+    channel: str = Field(default="SMS")
+    language: str = Field(default="English")
+    locale: str = Field(default="IN")
 
 
 class HoneypotRequest(BaseModel):
-    """Incoming request from the evaluation platform."""
-    model_config = ConfigDict(extra="ignore")
-    sessionId: str
-    message: Message
-    conversationHistory: List[Message] = Field(default_factory=list)
-    metadata: Optional[Metadata] = None
-    timestamp: Optional[Union[str, int]] = None
+    """Incoming payload on POST /honeypot."""
 
+    model_config = ConfigDict(extra="ignore")
+
+    sessionId: str = Field(...)
+    message: Message = Field(...)
+    conversationHistory: List[Message] = Field(default_factory=list)
+    metadata: Optional[Metadata] = Field(default=None)
+    timestamp: Optional[Union[str, int]] = Field(default=None)
+
+
+class HoneypotResponse(BaseModel):
+    """Response returned to the caller — only status + reply, nothing internal."""
+
+    status: str = Field(...)
+    reply: str = Field(...)
+
+
+# Callback payload models (used internally)
 
 class ExtractedIntelligence(BaseModel):
-    """Intelligence gathered from the scammer during engagement."""
     phoneNumbers: List[str] = Field(default_factory=list)
     bankAccounts: List[str] = Field(default_factory=list)
     upiIds: List[str] = Field(default_factory=list)
@@ -49,19 +62,13 @@ class ExtractedIntelligence(BaseModel):
 
 
 class EngagementMetrics(BaseModel):
-    """Engagement quality metrics."""
-    totalMessagesExchanged: int = 0
-    engagementDurationSeconds: int = 0
-
-
-class HoneypotResponse(BaseModel):
-    """Simplified API response – never exposes detection internals."""
-    status: str
-    reply: str
+    totalMessagesExchanged: int = Field(default=0)
+    engagementDurationSeconds: int = Field(default=0)
 
 
 class FinalOutput(BaseModel):
-    """Complete analysis payload sent via callback."""
+    """Full callback payload sent to the GUVI evaluation endpoint."""
+
     sessionId: str
     status: str = "success"
     scamDetected: bool = False
