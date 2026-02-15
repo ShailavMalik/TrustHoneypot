@@ -1,30 +1,21 @@
 """
-Data models for the Honeypot API.
-Using Pydantic for validation - it catches bad data before it causes problems.
+Pydantic data models for the Honeypot API (Phase 2).
+Strict validation with permissive defaults for evaluation compatibility.
 """
-from pydantic import BaseModel, Field, field_validator
-from pydantic import ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, Union
 
 
 class Message(BaseModel):
-    """A single message in the conversation.
-    
-    Notes:
-    - Some external testers may omit `sender` in history items. We default to
-      'scammer' to be permissive and avoid 422s for missing keys.
-    - `sender` can be 'scammer' or 'agent' (we only act on 'scammer').
-    - `timestamp` can be int (Unix millis) or str (ISO-8601); we convert to str.
-    """
-    model_config = ConfigDict(extra="ignore")  # ignore unexpected fields
-    sender: Optional[str] = Field(default="scammer")  # default for leniency
+    """A single message in the conversation."""
+    model_config = ConfigDict(extra="ignore")
+    sender: Optional[str] = Field(default="scammer")
     text: str
-    timestamp: Optional[Union[str, int]] = None  # Accept both string and int
-    
-    @field_validator('timestamp', mode='before')
+    timestamp: Optional[Union[str, int]] = None
+
+    @field_validator("timestamp", mode="before")
     @classmethod
     def convert_timestamp(cls, v):
-        """Convert numeric timestamps to string for consistency."""
         if isinstance(v, (int, float)):
             return str(int(v))
         return v
@@ -32,59 +23,49 @@ class Message(BaseModel):
 
 class Metadata(BaseModel):
     """Optional context about the message channel."""
-    model_config = ConfigDict(extra="ignore")  # tolerate extra fields
-    channel: str = "SMS"  # SMS, WhatsApp, Email, Chat
+    model_config = ConfigDict(extra="ignore")
+    channel: str = "SMS"
     language: str = "English"
     locale: str = "IN"
 
 
 class HoneypotRequest(BaseModel):
-    """
-    Incoming request from the GUVI evaluation platform.
-    
-    The platform sends scam messages here for our system to analyze
-    and respond to. Each request has a sessionId to track multi-turn
-    conversations with the same scammer.
-    """
-    model_config = ConfigDict(extra="ignore")  # tolerate extra fields from testers
+    """Incoming request from the evaluation platform."""
+    model_config = ConfigDict(extra="ignore")
     sessionId: str
     message: Message
     conversationHistory: List[Message] = Field(default_factory=list)
-    metadata: Optional[Metadata] = None  # Optional as per GUVI docs
-    timestamp: Optional[Union[str, int]] = None  # Some testers send timestamp at root level
+    metadata: Optional[Metadata] = None
+    timestamp: Optional[Union[str, int]] = None
 
 
 class ExtractedIntelligence(BaseModel):
-    """
-    All the useful info we managed to extract from the scammer.
-    This is what helps authorities track these guys down.
-    """
+    """Intelligence gathered from the scammer during engagement."""
+    phoneNumbers: List[str] = Field(default_factory=list)
     bankAccounts: List[str] = Field(default_factory=list)
     upiIds: List[str] = Field(default_factory=list)
     phishingLinks: List[str] = Field(default_factory=list)
-    phoneNumbers: List[str] = Field(default_factory=list)
-    suspiciousKeywords: List[str] = Field(default_factory=list)
+    emailAddresses: List[str] = Field(default_factory=list)
 
 
 class EngagementMetrics(BaseModel):
-    """How well did we keep the scammer talking?"""
-    engagementDurationSeconds: int
-    totalMessagesExchanged: int
+    """Engagement quality metrics."""
+    totalMessagesExchanged: int = 0
+    engagementDurationSeconds: int = 0
 
 
 class HoneypotResponse(BaseModel):
-    """Simplified response format per updated documentation."""
+    """Simplified API response – never exposes detection internals."""
     status: str
     reply: str
 
 
-class CallbackPayload(BaseModel):
-    """
-    Payload for the mandatory GUVI callback.
-    We send this when we've gathered enough intel on a confirmed scam.
-    """
+class FinalOutput(BaseModel):
+    """Complete analysis payload sent via callback."""
     sessionId: str
-    scamDetected: bool
-    totalMessagesExchanged: int
-    extractedIntelligence: ExtractedIntelligence
-    agentNotes: str
+    status: str = "success"
+    scamDetected: bool = False
+    scamType: str = "unknown"
+    extractedIntelligence: ExtractedIntelligence = Field(default_factory=ExtractedIntelligence)
+    engagementMetrics: EngagementMetrics = Field(default_factory=EngagementMetrics)
+    agentNotes: str = ""

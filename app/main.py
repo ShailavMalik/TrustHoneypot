@@ -1,43 +1,43 @@
 """
-Agentic Honey-Pot API
-Built for the India AI Impact Buildathon (GUVI) - Problem Statement 2
+Phase 2 – Agentic Honeypot API  (FastAPI entry point).
 
-This is the main entry point for the honeypot system. It receives suspected
-scam messages from the GUVI platform, analyzes them, generates responses,
-extracts intelligence, and reports back when we've gathered enough info.
+Orchestrates the detection → extraction → engagement → callback pipeline.
+Always returns HTTP 200 with {status, reply}. Internal analysis is never
+exposed in the response body.
 """
+import json
+import logging
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-import logging
 
-from app.models import (
-    HoneypotRequest,
-    HoneypotResponse
-)
+from app.models import HoneypotRequest, HoneypotResponse
 from app.auth import verify_api_key
-from app.detector import detector
-from app.extractor import extractor
-from app.agent import agent
+from app.detector import risk_accumulator
+from app.extractor import intelligence_store
+from app.agent import engagement_controller
 from app.memory import memory
-from app.callback import send_final_callback, should_send_callback
+from app.callback import build_final_output, send_final_callback, should_send_callback
 
-# Set up logging so we can see what's happening
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Create the FastAPI app
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
 app = FastAPI(
     title="Agentic Honey-Pot API",
-    description="Scam Detection & Intelligence Extraction for GUVI Hackathon",
-    version="1.0.0"
+    description="Phase 2 – Scam Detection & Intelligence Extraction",
+    version="2.0.0",
 )
 
-# Allow cross-origin requests (needed for the evaluation platform)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,149 +49,144 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """Log essential startup information"""
     logger.info("API Ready | Docs: /docs | Health: GET / | Honeypot: POST /honeypot")
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Log validation errors clearly."""
     logger.error(f"422 ERROR | {request.url.path} | {exc.errors()}")
-    
     return JSONResponse(
         status_code=422,
-        content={
-            "detail": exc.errors(),
-            "message": "Invalid request payload. See detail for exact fields.",
-        },
+        content={"detail": exc.errors(), "message": "Invalid request payload."},
     )
 
 
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
 @app.get("/")
 async def health_check():
-    """Simple health check - lets the platform know we're alive."""
-    return {
-        "status": "online",
-        "service": "Agentic Honey-Pot API",
-        "version": "1.0.0"
-    }
+    return {"status": "online", "service": "Agentic Honey-Pot API", "version": "2.0.0"}
 
 
+# ---------------------------------------------------------------------------
+# Main honeypot endpoint
+# ---------------------------------------------------------------------------
 @app.post("/honeypot", response_model=HoneypotResponse)
 async def process_message(
     request: HoneypotRequest,
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
 ):
-    """Process incoming scam messages and return analysis results."""
+    """
+    Process an incoming scammer message and return a human-like reply.
+
+    Pipeline:
+      1. Ensure session exists.
+      2. Replay conversation history through detector + extractor (idempotent).
+      3. Analyse current message   → risk score, scam flag.
+      4. Extract intelligence      → deduplicated per session.
+      5. Generate engagement reply  → 5-stage adaptive.
+      6. Check callback eligibility → send finalOutput once per session.
+      7. Return {status: "success", reply: "<text>"}.
+    """
     try:
-        import json
-        
         session_id = request.sessionId
-        current_message = request.message.text
-        
-        # Log full request body in one line
-        request_dict = request.model_dump()
-        logger.info(f"[{session_id[:8]}] REQUEST: {json.dumps(request_dict, ensure_ascii=False)}")
-        
-        # Process conversation history for context
-        # First, update agent's context awareness from history
-        agent.process_conversation_history(session_id, request.conversationHistory)
-        
-        for hist_msg in request.conversationHistory:
-            if hist_msg.sender == "scammer":
-                detector.calculate_risk_score(hist_msg.text, session_id)
-                extractor.extract(hist_msg.text, session_id)
-        
-        memory.add_message(session_id, "scammer", current_message)
-        
-        # Analyze current message
-        risk_score, is_scam = detector.calculate_risk_score(current_message, session_id)
-        detection_details = detector.get_detection_details(session_id)
-        
+        current_text = request.message.text or ""
+        history = request.conversationHistory or []
+
+        logger.info(
+            f"[{session_id[:8]}] REQUEST msg_len={len(current_text)} "
+            f"history_len={len(history)}"
+        )
+
+        # 1. Ensure session
+        memory.ensure_session(session_id)
+
+        # 2. Replay history (idempotent – detector & extractor deduplicate)
+        for hist_msg in history:
+            sender = hist_msg.sender or "scammer"
+            if sender == "scammer" and hist_msg.text:
+                risk_accumulator.analyze_message(hist_msg.text, session_id)
+                intelligence_store.extract(hist_msg.text, session_id)
+
+        # 3. Analyse current message
+        memory.add_message(session_id, "scammer", current_text)
+        cum_score, is_scam = risk_accumulator.analyze_message(current_text, session_id)
+        profile = risk_accumulator.get_profile(session_id)
+
         if is_scam and not memory.is_scam_confirmed(session_id):
             memory.mark_scam_confirmed(session_id)
-        
-        # Generate internal agent response (not returned to client)
+
+        # 4. Extract intelligence from current message
+        intelligence_store.extract(current_text, session_id)
+        intel = intelligence_store.get_intelligence(session_id)
+
+        # 5. Compute message count (history + current message)
+        #    history contains both scammer & agent messages from previous turns
+        total_messages = len(history) + 1
+
+        # 6. Generate reply
         scam_confirmed = memory.is_scam_confirmed(session_id)
-        # Use actual conversation length from history, not just server memory count
-        msg_count = len(request.conversationHistory) + 1
-        
-        # Always generate a reply using get_reply (handles both scam and non-scam)
-        agent_reply = agent.get_reply(session_id, current_message, msg_count, scam_confirmed)
-        memory.set_agent_response(session_id, agent_reply)
-        memory.add_message(session_id, "agent", agent_reply)
-        
-        # Extract intelligence
-        intelligence = extractor.extract(current_message, session_id)
-        
-        # Enrich suspiciousKeywords with detected categories for better analysis
-        detected_categories = list(detection_details.triggered_categories)
-        if detection_details.scam_type and detection_details.scam_type != "unknown":
-            detected_categories.append(detection_details.scam_type)
-        existing_keywords = intelligence.get("suspiciousKeywords", [])
-        intelligence["suspiciousKeywords"] = list(set(existing_keywords + detected_categories))
-        
-        # Calculate metrics using conversation history length + 1
-        total_messages = len(request.conversationHistory) + 1
-        duration_seconds = memory.get_duration(session_id)
-        
-        # Generate notes with enhanced detection details (internal use only)
-        if scam_confirmed:
-            agent_notes = agent.generate_agent_notes(
-                session_id, total_messages, intelligence, detection_details
-            )
-        else:
-            agent_notes = agent.generate_monitoring_notes(session_id, total_messages)
-        
-        # Send callback if conditions met
+        reply = engagement_controller.get_reply(
+            session_id=session_id,
+            message=current_text,
+            msg_count=total_messages,
+            risk_score=cum_score,
+            is_scam=scam_confirmed,
+            scam_type=profile.scam_type,
+        )
+        memory.add_message(session_id, "agent", reply)
+        memory.set_agent_response(session_id, reply)
+
+        # 7. Callback (once per session when eligible)
         callback_sent = False
-        callback_eligible = should_send_callback(scam_confirmed, total_messages, intelligence)
-        
-        if callback_eligible:
+        if should_send_callback(scam_confirmed, total_messages, intel):
             if not memory.is_callback_sent(session_id):
-                success = send_final_callback(session_id, total_messages, intelligence, agent_notes)
-                if success:
+                duration = memory.get_guaranteed_duration(session_id)
+                signals = risk_accumulator.get_triggered_signals(session_id)
+                notes = engagement_controller.generate_agent_notes(
+                    session_id=session_id,
+                    signals=signals,
+                    scam_type=profile.scam_type,
+                    intel=intel,
+                    total_msgs=total_messages,
+                    duration=duration,
+                )
+                payload = build_final_output(
+                    session_id=session_id,
+                    scam_detected=True,
+                    scam_type=profile.scam_type,
+                    intelligence=intel,
+                    total_messages=total_messages,
+                    duration_seconds=duration,
+                    agent_notes=notes,
+                )
+                if send_final_callback(session_id, payload):
                     memory.mark_callback_sent(session_id)
                     callback_sent = True
-        
-        # Build simplified response (only status and reply)
-        response = HoneypotResponse(
-            status="success",
-            reply=agent_reply
+
+        # Internal log (never exposed in response)
+        logger.info(
+            f"[{session_id[:8]}] INTERNAL score={cum_score:.0f} "
+            f"scam={scam_confirmed} type={profile.scam_type} "
+            f"msgs={total_messages} callback={'sent' if callback_sent else 'no'}"
         )
-        
-        # Internal logging - detection result, intelligence, notes, callback (not exposed in response)
-        internal_log = {
-            "scamDetected": scam_confirmed,
-            "engagementMetrics": {
-                "engagementDurationSeconds": duration_seconds,
-                "totalMessagesExchanged": total_messages
-            },
-            "extractedIntelligence": {
-                "bankAccounts": intelligence.get("bankAccounts", []),
-                "upiIds": intelligence.get("upiIds", []),
-                "phishingLinks": intelligence.get("phishingLinks", []),
-                "phoneNumbers": intelligence.get("phoneNumbers", []),
-                "suspiciousKeywords": intelligence.get("suspiciousKeywords", [])
-            },
-            "agentNotes": agent_notes
-        }
-        logger.info(f"[{session_id[:8]}] INTERNAL: {json.dumps(internal_log, ensure_ascii=False)}")
-        
-        # Log simplified response
-        response_dict = response.model_dump()
-        logger.info(f"[{session_id[:8]}] RESPONSE: {json.dumps(response_dict, ensure_ascii=False)}")
-        logger.info(f"[{session_id[:8]}] CALLBACK: {'sent' if callback_sent else 'not sent'}")
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error processing request: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+        # 8. Return simple response
+        return HoneypotResponse(status="success", reply=reply)
+
+    except Exception as exc:
+        logger.error(f"Error processing request: {exc}", exc_info=True)
+        # Graceful fallback – never return non-200 for transient errors
+        return HoneypotResponse(
+            status="success",
+            reply="Sorry, I didn't catch that. Can you please repeat?",
+        )
 
 
+# ---------------------------------------------------------------------------
+# Dev runner
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    print("Starting Agentic Honey-Pot API...")
-    print("Make sure your .env file has API_KEY set")
     uvicorn.run(app, host="0.0.0.0", port=8000)

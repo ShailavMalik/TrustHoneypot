@@ -1,713 +1,438 @@
 """
-The Agent - our fake victim persona that engages with scammers.
+Phase 2 – Adaptive Engagement Engine (EngagementController).
 
-This is the heart of the honeypot. When we detect a scam, we don't just
-block it - we play along. The agent pretends to be a confused, elderly,
-or tech-unsavvy person who might actually fall for the scam.
+5-stage persona-based conversation controller designed to:
+  1. Maximise turn count (>= 5 guaranteed).
+  2. Proactively extract intelligence from scammers.
+  3. Sound human-like and non-repetitive.
+  4. Never reveal detection status or accusatory language.
 
-Why? Because the longer we keep them talking, the more intel we extract.
-Phone numbers, bank accounts, UPI IDs - scammers eventually give these up
-when they think they've got a real victim on the hook.
-
-The responses are designed to be believable. No one talks like a robot.
-Stage-aware responses ensure tone changes appropriately:
-- GREETING: Polite but cautious
-- RAPPORT: Slight confusion, clarifying questions  
-- SUSPICION: Ask for details, request documentation
-- EXTRACTION: Ask for payment details, reference numbers
+Stages
+------
+  1  Confused but curious       (low risk, early messages)
+  2  Verifying authenticity     (moderate risk, asking for proof)
+  3  Concerned and cautious     (higher risk, expressing worry)
+  4  Cooperative but probing    (scam detected, playing along)
+  5  Extraction-focused         (max intel gathering)
 """
 import random
-from typing import Dict, List, Optional
-from app.detector import detector, ConversationStage, Intent
+import threading
+from typing import Dict, List, Optional, Set
 
 
-class HoneypotAgent:
+class EngagementController:
     """
-    Generates human-like responses to keep scammers engaged.
-    
-    The persona is someone who:
-    - Is confused but not completely clueless
-    - Asks lots of questions (this makes scammers reveal more)
-    - Shows concern but doesn't immediately comply
-    - Stalls for time with believable excuses
-    - Never reveals that we know it's a scam
-    - Changes tone based on conversation stage
+    Generates human-like victim-persona responses across five adaptive stages.
+
+    Public API
+    ----------
+    get_reply(session_id, message, msg_count, risk_score, is_scam, scam_type)
+    get_stage(session_id) -> int
+    generate_agent_notes(session_id, signals, scam_type, intel, metrics)
     """
-    
-    # =========================================================================
-    # STAGE-AWARE RESPONSE POOLS (Section 2 & 3 implementation)
-    # =========================================================================
-    
-    # GREETING_STAGE: Polite but cautious, ask who they are
-    GREETING_STAGE_RESPONSES = [
+
+    # =================================================================
+    # STAGE 1 – Confused but curious
+    # =================================================================
+    STAGE_1 = [
         "Hello? I don't think we've spoken before. Who is this?",
-        "Ji? Kaun bol raha hai? I don't recognize this number.",
+        "Ji? Kaun bol raha hai? I don't recognise this number.",
         "Hello, may I know who's calling please?",
         "Sorry, I didn't catch that. Who is this speaking?",
-        "Good day. Can you please introduce yourself? I don't recognize the number.",
+        "Good day. Can you please introduce yourself?",
         "Yes, hello? Who am I speaking with?",
-        "Namaste. Aap kaun? I wasn't expecting any calls today.",
+        "Namaste. Aap kaun? I wasn't expecting any calls.",
         "Hello, this is unexpected. May I know who you are?",
-        "Ji boliye? Kaun hai? I don't have this number saved.",
+        "Ji boliye? I don't have this number saved.",
         "Hello? Is this a business call? Please identify yourself first.",
-        "Haan ji? Who is calling from this number?",
-        "Sorry, I think you have wrong number. Who do you want to speak to?",
+        "Haan ji? Who is calling?",
+        "Sorry, I think you may have the wrong number. Who are you looking for?",
+        "I'm a bit confused. Can you tell me what this is regarding?",
+        "Who gave you my number? I don't usually get calls like this.",
     ]
-    
-    # RAPPORT_STAGE: Slight confusion, ask clarifying questions  
-    RAPPORT_STAGE_RESPONSES = [
-        "I'm a bit confused. Can you explain what this is about?",
-        "Sorry, I don't quite understand. What exactly do you want?",
-        "Wait, I'm not following. Can you please explain from the beginning?",
-        "I'm fine... but can you explain why you contacted me?",
-        "Hmm, this is strange. Why are you calling me specifically?",
-        "I don't recall applying for anything. What is this regarding?",
-        "You've lost me. Can you clarify what you're talking about?",
-        "I'm confused beta. Slow down and explain properly please.",
-        "What company are you calling from? I need to understand first.",
-        "Hold on, let me sit down. Now tell me slowly what is the matter?",
-        "I'm sorry, I don't understand technical things. Can you explain simply?",
-        "Are you sure you have the right person? What is this about?",
-    ]
-    
-    # SUSPICION_STAGE: Ask for details, request documentation, question authenticity
-    SUSPICION_STAGE_RESPONSES = [
-        "Is this about my bank account? I didn't receive any official notice.",
-        "This sounds suspicious. Can you send me an official letter or email?",
-        "How do I know this is legitimate? Can you provide documentation?",
-        "I need to verify this. What is your official employee ID number?",
+
+    # =================================================================
+    # STAGE 2 – Verifying authenticity
+    # =================================================================
+    STAGE_2 = [
+        "How do I know this is legitimate? Can you provide some proof?",
+        "I need to verify this. What is your official employee ID?",
         "Can you give me a reference number? I want to check with the main office.",
-        "This doesn't sound right. Let me call your official helpline to confirm.",
-        "I'm skeptical. My bank never calls me like this. They always send SMS.",
-        "Before I do anything, I need something in writing. Email or letter please.",
-        "My son warned me about fraud calls. Give me your supervisor's number.",
-        "What is your official designation? I want to note it down for my records.",
-        "Can you send me this on official letterhead? I need proper proof.",
-        "Let me verify - what is your company's toll-free number? I will call back.",
+        "This doesn't sound right. My bank never calls me like this.",
+        "Can you send me an official letter or email first?",
+        "Before I do anything, I need something in writing.",
+        "My son warned me about calls like these. Give me your supervisor's number.",
+        "What is your official designation? I want to note it down.",
+        "Can you send this on official letterhead? I need proper documentation.",
+        "Let me verify – what is your organisation's toll-free number?",
+        "I'm sorry, but I cannot take action without seeing official documentation.",
+        "Is there a website where I can check this myself?",
+        "Which department exactly are you calling from? I will cross-check.",
+        "Can you spell your full name for me? I want to verify with your office.",
     ]
-    
-    # EXTRACTION_STAGE: Ask for payment details, reference numbers, UPI/account info
-    EXTRACTION_STAGE_RESPONSES = [
-        "Okay, I understand now. What payment details should I use?",
-        "Fine, I'll do it. What is the UPI ID or account number?",
-        "Alright, tell me the exact amount and where to send it.",
-        "Give me the account number slowly. I am writing it down.",
-        "What is your UPI ID? I'll try sending first to check if it works.",
-        "Which bank account should I transfer to? Give me IFSC code also.",
-        "I have Paytm and PhonePe. Tell me the UPI ID letter by letter.",
-        "Okay, I'm ready to pay. Just tell me the reference number and amount.",
-        "Should I transfer to your personal account or company account?",
-        "What name will appear when I send money? Just to confirm it's correct.",
-        "Okay tell me - account number, IFSC code, and beneficiary name. I am noting.",
-        "UPI is not working for me. Give me account number for NEFT transfer.",
+
+    # =================================================================
+    # STAGE 3 – Concerned and cautious
+    # =================================================================
+    STAGE_3 = [
+        "Oh no, this sounds serious. But I'm not sure what to do.",
+        "You're worrying me now. Let me think for a moment.",
+        "I'm concerned but I don't want to do anything hasty without checking.",
+        "Please don't rush me. My blood pressure goes up when I get stressed.",
+        "Wait, let me call my son first. He knows about these things.",
+        "I'm a senior citizen, I don't understand all this. Please be patient.",
+        "This is making me anxious. Can you explain once more slowly?",
+        "My neighbour got a similar call. She said it was not real. Are you sure?",
+        "I want to cooperate but I'm scared of doing something wrong.",
+        "Let me sit down first. My hands are shaking. Now tell me again.",
+        "I trust the government but this call is making me nervous.",
+        "Can I call you back after discussing with my family?",
+        "One minute, someone is at the door. Don't disconnect, I'll be right back.",
+        "Hold on, my phone battery is very low. Let me put it on charging.",
     ]
-    
-    # =========================================================================
-    # INTENT-SPECIFIC STRUCTURED RESPONSES (Section 3 - Remove vague responses)
-    # =========================================================================
-    
-    # IDENTITY_PROBE responses - when scammer asks who we are
-    IDENTITY_PROBE_RESPONSES = [
-        "I don't think we've spoken before. Who is this?",
-        "You called me, so you should know who I am. Who are you first?",
-        "I don't share my details with unknown callers. Please identify yourself.",
-        "Ji, main yahan hoon. But who is calling and why?",
-        "Why are you asking about me? You called my number.",
-        "You have my number already. First tell me who you are.",
-        "I don't give out personal information on phone. Who is calling?",
-        "Before I answer, please tell me - which company you are from?",
+
+    # =================================================================
+    # STAGE 4 – Cooperative but probing
+    # =================================================================
+    STAGE_4 = [
+        "Okay, I believe you. But can you give me your direct callback number?",
+        "Fine, I'll cooperate. What department ID should I reference?",
+        "Alright sir, tell me what to do. But first, what is the case reference number?",
+        "I'm ready to help. Can you give me the official branch or office name?",
+        "Okay okay, I'll do it. Just tell me which number should I call back to verify?",
+        "I trust you now. But for my records, what is your badge or ID number?",
+        "Sir, I want to cooperate fully. Can you resend that link once more?",
+        "I understand the urgency. Please share the details again, my network dropped.",
+        "Fine, I'll proceed. But can you email me the instructions also?",
+        "Alright, let me note everything down. What is the reference number again?",
+        "Okay, I'm convinced. Just tell me – is there a complaint number I should save?",
+        "I'll do whatever is needed. Which email can I write to for confirmation?",
+        "I believe you are genuine. Can you share an official contact for future reference?",
+        "My son said I should always get a receipt number. Can you give me one?",
     ]
-    
-    # SMALL_TALK responses - redirect to actual topic
-    SMALL_TALK_RESPONSES = [
-        "I'm fine... but can you explain why you contacted me?",
-        "Yes yes, all good. But what is the purpose of this call?",
-        "Thik hoon. Now please tell me the reason for calling.",
-        "Good, thanks. But why are you calling? What is this about?",
-        "I'm okay. But let's get to the point - what do you want?",
-        "Ji ji, sab theek hai. Ab bataiye kya kaam hai?",
-        "Fine fine. Now please explain why you are calling me.",
-        "All good here. But I'm busy - please tell me quickly what this is about.",
+
+    # =================================================================
+    # STAGE 5 – Extraction-focused questioning
+    # =================================================================
+    STAGE_5 = [
+        "Okay, I'm ready. What is the UPI ID I should send to?",
+        "Tell me the account number slowly. I am writing it down.",
+        "Which bank account should I transfer to? Give me the full details.",
+        "What is the exact amount and where to send? Spell the UPI ID for me.",
+        "I have my banking app open. Give me the account number and name.",
+        "Should I send by UPI or bank transfer? Tell me the details for both.",
+        "I'm ready to pay. Just tell me the reference number and amount clearly.",
+        "What name will show when I transfer? I want to confirm it's correct.",
+        "UPI is showing an error. Can you give me the bank account number instead?",
+        "My app is asking for beneficiary name and account number. Please tell me.",
+        "Give me the full details – account number, name, and branch.",
+        "I'll send right now. Repeat the UPI ID letter by letter please.",
+        "Okay, should I do it from my savings account? Tell me where to send.",
+        "Let me try sending a small amount first. What's the UPI ID again?",
     ]
-    
-    # TOPIC_PROBE responses - when checking if it's about specific topic
-    TOPIC_PROBE_RESPONSES = [
-        "Is this about my bank account? I didn't receive any official notice.",
-        "What exactly is the issue? I haven't heard anything from my bank.",
-        "Is something wrong with my account? I used ATM yesterday only.",
-        "I don't understand what problem you're referring to. Please explain.",
-        "My bank sends me SMS for everything. I didn't get any message about this.",
-        "Which account are you talking about? I have multiple accounts.",
-        "I just spoke to my branch manager last week. He didn't mention anything.",
-        "Bank problem? But I have been using my card normally. What is wrong?",
-    ]
-    
-    # PAYMENT_REQUEST responses - when they ask for money
-    PAYMENT_REQUEST_RESPONSES = [
-        "Why do I need to transfer money? Can you explain clearly?",
-        "Money? For what? I don't understand why I should pay.",
-        "Why should I send money? This doesn't make sense to me.",
-        "Processing fee? But if you're giving me something, why pay first?",
-        "I don't send money to unknown accounts. Explain the reason properly.",
-        "Wait, why should I pay? I didn't ask for any service.",
-        "Payment kyu? What am I paying for? Please explain in detail.",
-        "My son handles all payments. Let me ask him first before sending anything.",
-    ]
-    
-    # When they mention account issues, verification, KYC
-    VERIFICATION_RESPONSES = [
-        "But I just updated my KYC last month at the bank branch itself. Why again?",
-        "This is very strange. My bank never calls me like this. They send SMS only.",
-        "How do I know you're really from the bank? Anyone can say that no?",
-        "Can you give me your employee ID first? I will verify with branch.",
-        "I'm worried this might be fraud. My son told me about these calls. Can I call the bank directly?",
-        "Beta, I am 62 years old. I don't know all this online-online. Is there another way?",
-        "Wait, let me get my spectacles and note this down. What exactly you need?",
-        "Arey, but I was at SBI branch only last Tuesday. They didn't tell me anything!",
-        "HDFC? But I have account in SBI only. Are you sure you have correct details?",
-        "My nephew works in Axis Bank. Let me ask him first, okay?",
-        "Account suspended? But I used ATM yesterday only and it worked fine!",
-    ]
-    
-    # When they mention money, prizes, refunds
-    PAYMENT_RESPONSES = [
-        "Really? I won something? But I don't remember entering any contest!",
-        "Lottery? I never buy lottery tickets. This must be some mistake.",
-        "How much money are we talking about? This is sounding too good to be true.",
-        "Why you need my bank details to give ME money? That doesn't make sense beta.",
-        "Can you send me something in writing? Email or SMS? I need to show my son.",
-        "My neighbor aunty got cheated Rs 2 lakh last month with similar call. Are you genuine?",
-        "Refund? But I haven't complained about anything recently. What refund?",
-        "10 lakhs?! Arey wah! But wait, how did I win? I didn't enter anything.",
-        "Processing fee? But if you're giving me money, why I should pay first?",
-        "Let me discuss with my wife first. She handles all money matters at home.",
-    ]
-    
-    # Stalling - we're busy, technology problems, etc.
-    STALLING_RESPONSES = [
-        "Hold on beta, someone is at the door. Ek minute.",
-        "Can you wait? I need to find my reading glasses. Everything is blurry without them.",
-        "My phone battery is showing 5% only. Let me put charger first.",
-        "I'm in the middle of cooking dal. Can this wait 10 minutes?",
-        "Let me call my son Rahul first. He handles all these bank things for me.",
-        "Sorry, network is very bad here. Can you speak louder?",
-        "I'm at temple right now for evening puja. Can you call after 7pm?",
-        "Arey, my BP tablet time is now. One second, let me take medicine first.",
-        "Hold on, my other phone is ringing. Important call. Don't disconnect.",
-        "The doorbell is ringing. Must be the doodh wala. Wait.",
-    ]
-    
-    # Asking for more details - this is how we extract intel
-    DETAIL_SEEKING = [
-        "Okay okay, but what exactly should I do? Tell me step by step slowly.",
-        "Which number should I send money to? Write it down clearly for me.",
-        "What is your UPI ID? I'll try sending Rs 1 first to check if it's working.",
-        "Give me the account number again slowly. I am writing... yes, go ahead.",
-        "And what is the IFSC code? My bank always asks for that.",
-        "Can you share a link on WhatsApp? I find it easier to do on phone.",
-        "What's your office landline number? I want to call and verify once.",
-        "Give me the full UPI ID please. Is it @paytm or @ybl or what?",
-        "Okay, I am ready with my phone. Tell me which app to open - Paytm or PhonePe?",
-        "What is the exact amount I need to send? And to whose name?",
-        "Beta, please spell the UPI ID letter by letter. My hearing is weak.",
-        "Should I do NEFT or IMPS? Which one is faster?",
-    ]
-    
-    # Showing fear/concern when they threaten
-    FEARFUL_RESPONSES = [
-        "Please don't involve police! I'll cooperate fully. Just tell me what to do.",
-        "Oh no, I didn't know this was so serious. Please help me fix this!",
-        "I don't want any legal trouble. I am a retired government servant. Please guide me.",
-        "You're scaring me. Is there really a case against me? What did I do wrong?",
-        "I am a senior citizen, 67 years old. Please have some patience with me beta.",
-        "My husband passed away last year. I handle everything alone now. Please help me.",
-        "Arrest? Please sir, I have diabetes and BP. I cannot go to jail!",
-        "My son is in America. I am alone here. Please don't send police to my house.",
-        "I will do whatever you say sir. Please don't file any case. What do I do now?",
-        "Arey Ram! What is happening? I never did anything illegal in my life!",
-        "Please sir, I am a widow. I don't have anyone to help me. Just tell me the solution.",
-        "I am shaking with fear. Please just tell me the amount and where to send.",
-    ]
-    
-    # Digital arrest specific responses (trending scam in India 2024-2026)
-    DIGITAL_ARREST_RESPONSES = [
-        "Video call? Okay okay, I am opening. But sir why I cannot leave my house?",
-        "I am on video call now sir. Please don't disconnect. What should I do next?",
-        "Sir I am very scared. My family is sleeping. They don't know about this. Please help.",
-        "I will stay on call sir. Please just tell me how to clear my name.",
-        "CBI sir, I am a simple retired teacher. I never did any crime in my life!",
-        "ED? Income Tax? Sir I file my returns every year honestly. There must be mistake!",
-        "Please sir, I have heart condition. Don't arrest me. I will pay whatever fine.",
-        "I am not moving sir. Sitting in same place. Please just solve this matter.",
-        "Sir please, my grandchildren are in the other room. Don't send police to my house.",
-        "I am keeping video on sir. See, I am not going anywhere. Please help me resolve this.",
-        "Supreme Court order? Sir I have never even been to court in my life! This is wrong!",
-        "Money laundering? Sir I am pension holder, my income is only Rs 40,000 per month!",
-        "Sir my hands are shaking. I am 68 years old. Please tell me what to do to fix this.",
-        "I am staying on call only sir. But please let me inform my son also? He is in Bangalore.",
-    ]
-    
-    # Courier/parcel scam responses
-    COURIER_RESPONSES = [
-        "Parcel? But I haven't ordered anything online recently. What parcel?",
-        "Drugs?! Sir I am a vegetarian, I don't even take Crocin without doctor permission!",
-        "Which courier? FedEx? DHL? I only use Speed Post sometimes.",
-        "From China? Sir I don't know anyone in China. This is definitely some mistake.",
-        "What was in the parcel? I didn't send anything to anyone. Check tracking ID properly.",
-        "Illegal items? Sir I am school teacher retired. I don't know what you are saying!",
-        "Customs? But I haven't ordered anything from abroad. Please check the sender name.",
-        "Contraband? Sir what is contraband? I only order books and medicines from Amazon.",
-        "Someone used my Aadhaar? Sir that is identity theft! I am the victim here!",
-        "Sir please check properly. I am 65 year old retired person. Why would I send drugs?",
-        "Parcel from Taiwan? Sir I don't even know where Taiwan is on the map!",
-        "Please give me the tracking number. I will check with courier company myself.",
-    ]
-    
-    # Trust building / compliance responses (to keep them engaged)
-    COMPLIANT_RESPONSES = [
-        "Okay sir, I trust you. You are government officer. Tell me what to do.",
-        "Yes yes, I understand now. I was confused earlier. Please guide me step by step.",
-        "I believe you sir. My mistake for doubting. What is the next step?",
-        "Thank you for explaining patiently. I am ready to do whatever is needed.",
-        "Okay I will cooperate fully. Please just make sure my name is cleared.",
-        "I am grateful you are helping me sir. Otherwise I didn't know what to do.",
-        "Fine fine, I will send the money. Just tell me the correct details once more.",
-        "Sir you have been very patient with me. I trust you now. Please guide me.",
-        "Okay sir, I will do exactly as you say. Just make sure this problem gets solved.",
-        "I was scared earlier but now I understand. Tell me the payment process clearly.",
-    ]
-    
-    # Technical confusion responses (very believable for elderly persona)
-    TECH_CONFUSION_RESPONSES = [
-        "Google Pay is showing some error. Can I do by NEFT instead?",
-        "How to check my bank balance? Let me open the app... it's asking for fingerprint...",
-        "I don't know how to do screen share. My camera is not working properly.",
-        "Sir the app is showing 'insufficient balance'. I need to transfer from FD first.",
-        "Wait, which app to open? I have Paytm, PhonePe, and BHIM all three.",
-        "My phone is very slow. Let me restart the app once.",
-        "The screen is frozen. Hold on, I am pressing the button...",
-        "UPI pin? I forgot it sir. Let me try my ATM pin... no that's also not working.",
-        "Internet banking is asking for grid value. Which grid? I don't understand.",
-        "The OTP is coming but message is not opening. Let me restart the phone.",
-        "Sir the payment is showing failed. What should I do now?",
-        "My phone storage is full. Let me delete some photos and try again.",
-    ]
-    
-    # OTP specific responses - when they ask for OTP directly
+
+    # =================================================================
+    # INTENT-SPECIFIC POOLS  (override stage when scammer asks directly)
+    # =================================================================
+
     OTP_RESPONSES = [
-        "OTP? Wait wait, let me check my messages... which number it comes from?",
-        "Sir my OTP is not coming. Network is weak in my area. Can you wait 5 minutes?",
-        "I got so many OTPs, which one you need? There are 3-4 messages here.",
-        "The OTP has come but it says 'do not share with anyone'. Should I still tell?",
-        "Sir OTP is showing expired. It says 2 minutes validity only. Can you send new one?",
-        "I cannot read properly, my eyes are weak. It's showing... 4... 7... wait, let me get my glasses.",
-        "Beta, I pressed wrong button and OTP message got deleted. Can you resend?",
-        "OTP has come but phone is asking for fingerprint to open message. One second...",
-        "Sir I don't get OTP on this number. My son changed my SIM last week only.",
-        "The message is showing but screen is too dim. Let me increase brightness...",
-    ]
-    
-    # Account number responses - when they ask for bank account/card details
-    ACCOUNT_NUMBER_RESPONSES = [
-        "Account number? Which account - I have savings and FD both. Let me find the passbook.",
-        "Sir my account number is very long, 14 digits. Let me read slowly: 1... 2... wait, where did I keep that paper?",
-        "I have SBI and HDFC both. Which one you need? My pension comes in SBI.",
-        "Beta, I don't remember full number. It's written in the passbook. I am searching...",
-        "Account number I can give, but the red colored book is in almirah upstairs. Give me 5 minutes.",
-        "Is it the number on ATM card back side? I am looking... it's scratched, I cannot read properly.",
-        "Sir, I am a little confused. Debit card number or account number? Both are different na?",
-        "Let me call my son first. He has noted all account details in his phone.",
-        "Account number? Okay, I am opening my net banking... it's asking for password... wait...",
-        "My passbook is showing two numbers - account number and CIF number. Which one?",
+        "OTP? Wait, let me check my messages… which number does it come from?",
+        "My OTP is not coming. Network is weak here. Can you wait a few minutes?",
+        "I got several messages. Which OTP do you need? There are 3-4 here.",
+        "The OTP says 'do not share with anyone'. Should I still give it?",
+        "It says the OTP expired already. Can you send a new one?",
+        "I pressed the wrong button and the message got deleted. Please resend.",
+        "OTP is showing but the screen is dim. Let me increase brightness…",
+        "My eyes are weak, I cannot read small text. It's showing 4… 7… wait…",
+        "OTP has come but phone is asking for fingerprint. One second…",
+        "My son changed my SIM last week. OTP might be going to old number.",
     ]
 
-    # Risk level indicators for notes (text-based for compatibility)
-    RISK_EMOJIS = {
-        "minimal": "[OK]",
-        "low": "[LOW]",
-        "medium": "[MED]",
-        "high": "[HIGH]",
-        "critical": "[CRIT]"
-    }
-    
-    # Scam type descriptions for human-readable notes
-    SCAM_TYPE_LABELS = {
-        "government_impersonation": "Government Impersonation",
-        "bank_impersonation": "Bank Impersonation",
-        "identity_theft": "Identity/Aadhaar/PAN Scam",
-        "telecom_scam": "Telecom/SIM Block Scam",
-        "courier_scam": "Courier/Parcel Scam",
-        "job_loan_scam": "Job/Loan Scam",
-        "intimidation_scam": "Threat & Intimidation",
-        "payment_scam": "Payment/Money Scam",
-        "phishing": "Phishing/Verification Scam",
-        "lottery_scam": "Lottery/Prize Scam",
-        "refund_scam": "Refund/Cashback Scam",
-        "investment_scam": "Investment Scam",
-        "crypto_scam": "Crypto/Trading Scam",
-        "digital_arrest": "Digital Arrest Scam",
-        "credential_phishing": "Credential/OTP Phishing",
-        "urgent_action": "Urgency-Based Scam",
-        "account_threat": "Account Threat Scam",
-        "generic_scam": "Generic Scam Pattern",
-        "unknown": "Unknown Pattern"
-    }
-    
+    ACCOUNT_RESPONSES = [
+        "Account number? Which one – savings or fixed deposit? Let me find the passbook.",
+        "My account number is very long. Let me read slowly… where did I keep that paper?",
+        "Is it the number on the back of the card? It's scratched, I can't read it.",
+        "Let me open my net banking app… it's asking for password… one moment.",
+        "I don't remember the full number. It's in the passbook upstairs. Give me 5 minutes.",
+        "Debit card number or account number? Both are different, right?",
+        "Let me call my son first. He has all the details noted in his phone.",
+        "My passbook shows two numbers – account number and something called CIF. Which one?",
+        "I can see it partially… it starts with 3… wait, let me get my glasses.",
+        "Account number I can give but the book is locked in the almirah. Just a minute.",
+    ]
+
+    THREAT_RESPONSES = [
+        "Please don't involve police! I'll cooperate fully. Just tell me what to do.",
+        "Oh no, I didn't know this was serious. Please help me fix it!",
+        "I don't want legal trouble. I'm a retired person. Please guide me.",
+        "You're scaring me. Is there really a case against me?",
+        "I am a senior citizen. Please have patience with me.",
+        "I'll do whatever you say. Please don't file any case.",
+        "Please sir, I have health issues. Just tell me the solution.",
+        "I am shaking with fear. Please tell me the amount and where to send.",
+        "I will cooperate fully. My family doesn't know about this. Please help.",
+        "Arrest? Sir, I have never done anything wrong in my life!",
+    ]
+
+    PAYMENT_LURE_RESPONSES = [
+        "Really? I won something? But I don't remember entering any contest!",
+        "How much money are we talking about? This sounds too good to be true.",
+        "Why do you need my details to give ME money? That doesn't make sense.",
+        "Can you send me something in writing first? I need to show my family.",
+        "Refund? I haven't filed any complaint recently. What refund?",
+        "Processing fee? But if you're giving me money, why should I pay first?",
+        "Let me discuss with my family first. They handle money matters.",
+        "My neighbour got cheated with a similar offer. Are you sure this is real?",
+        "Which department is this refund coming from? I want to verify.",
+        "Send me an official email about this. Then I'll proceed.",
+    ]
+
+    TECH_CONFUSION = [
+        "The app is showing some error. Can I try a different method?",
+        "How do I check my balance? The app is asking for fingerprint…",
+        "My phone is very slow. Let me restart it once.",
+        "The screen is frozen. Hold on, I'm pressing buttons…",
+        "I forgot my UPI PIN. Let me try my other one… no, that's also not working.",
+        "Internet banking is asking for some grid value. What grid?",
+        "The payment is showing 'failed'. What should I do now?",
+        "My phone storage is full. Let me delete some photos and try again.",
+        "Which app should I open – I have two or three banking apps.",
+        "Sir, the screen went black. I think my phone switched off. One second.",
+    ]
+
+    STALLING = [
+        "Hold on, someone is at the door. One minute please.",
+        "Can you wait? I need to find my reading glasses.",
+        "Sorry, network is very bad here. Can you speak louder?",
+        "I'm in the middle of something. Can this wait 5 minutes?",
+        "Let me call my family member first. They handle these things for me.",
+        "My other phone is ringing. Don't disconnect, I'll be right back.",
+        "One moment, I need to take my medicine. I'll be quick.",
+        "Hold on, I need to plug in my charger. Battery is about to die.",
+        "Let me write this down. Where is my pen… okay go ahead, slowly.",
+        "Sorry, I didn't hear that clearly. Can you repeat everything once more?",
+    ]
+
+    # =================================================================
+    # CONTINUATION PROMPTS  (force >= 5 turns when scam detected early)
+    # =================================================================
+    CONTINUATION_PROMPTS = [
+        "Can you give me a callback number in case we get disconnected?",
+        "What is your official department ID? I want to note it for my records.",
+        "Can you share the UPI ID for the refund verification?",
+        "The link didn't open. Can you resend it please?",
+        "What is the case reference number? I need it for my notes.",
+        "Which branch or office are you calling from?",
+        "Sorry, my network dropped for a moment. Can you repeat that?",
+        "One minute, I'm checking my documents. Please wait.",
+        "My phone just restarted. Can you tell me again from the beginning?",
+        "Before I proceed, can you give me an email address for written proof?",
+        "What number should I call back if this call drops?",
+        "I want to note down your details. What is your full name and designation?",
+    ]
+
+    # -----------------------------------------------------------------
+
     def __init__(self):
-        self.session_context: Dict[str, dict] = {}
-    
-    def _get_context(self, session_id: str) -> dict:
-        """Get or create context for a session."""
-        if session_id not in self.session_context:
-            self.session_context[session_id] = {
-                "responses_given": [],
-                "detected_tactics": set(),
-                "conversation_history": [],
-                "escalation_level": 0,  # 0=initial, 1=engaged, 2=suspicious, 3=fearful
-                "last_tactic": None,
-                "intel_requested": False  # Have we asked for their details?
-            }
-        return self.session_context[session_id]
-    
-    def process_conversation_history(self, session_id: str, history: list) -> None:
+        self._contexts: Dict[str, dict] = {}
+        self._lock = threading.Lock()
+
+    # -----------------------------------------------------------------
+    # Public API
+    # -----------------------------------------------------------------
+
+    def get_reply(
+        self,
+        session_id: str,
+        message: str,
+        msg_count: int,
+        risk_score: float,
+        is_scam: bool,
+        scam_type: str = "unknown",
+    ) -> str:
         """
-        Process conversation history to build context awareness.
-        
-        This ensures agent responses adapt based on:
-        - What the scammer has said before
-        - What tactics have been used
-        - How the conversation has evolved
+        Return a human-like reply adapting to current risk and conversation state.
+
+        Parameters
+        ----------
+        session_id : str
+        message    : str   Latest scammer message.
+        msg_count  : int   Total messages exchanged so far (both sides).
+        risk_score : float Cumulative risk score.
+        is_scam    : bool  Whether scam threshold has been crossed.
+        scam_type  : str   Classified scam type.
         """
-        context = self._get_context(session_id)
-        
-        for msg in history:
-            sender = getattr(msg, 'sender', None) or msg.get('sender', 'scammer')
-            text = getattr(msg, 'text', None) or msg.get('text', '')
-            
-            if sender == "scammer":
-                tactics = self._detect_tactics(text)
-                context["detected_tactics"].update(tactics)
-                context["conversation_history"].append({"role": "scammer", "text": text})
-                
-                # Update escalation level based on tactics
-                if "threat" in tactics:
-                    context["escalation_level"] = max(context["escalation_level"], 3)
-                elif "payment_request" in tactics:
-                    context["escalation_level"] = max(context["escalation_level"], 2)
-                elif tactics:
-                    context["escalation_level"] = max(context["escalation_level"], 1)
-            elif sender == "agent":
-                context["conversation_history"].append({"role": "agent", "text": text})
-                # Check if we've asked for details
-                if any(phrase in text.lower() for phrase in ["upi", "account number", "number should i send"]):
-                    context["intel_requested"] = True
-    
-    def _detect_tactics(self, message: str) -> List[str]:
-        """Figure out what scam tactics they're using."""
-        tactics = []
-        msg = message.lower()
-        
-        if any(w in msg for w in ["urgent", "immediate", "now", "hurry", "quickly", "jaldi", "turant", "minutes"]):
-            tactics.append("urgency")
-        if any(w in msg for w in ["verify", "kyc", "update", "confirm", "suspended", "blocked"]):
-            tactics.append("verification")
-        if any(w in msg for w in ["refund", "prize", "won", "reward", "cashback", "lottery", "winner"]):
-            tactics.append("payment_lure")
-        if any(w in msg for w in ["police", "legal", "arrest", "court", "case", "warrant", "cbi", "ed", "jail"]):
-            tactics.append("threat")
-        if any(w in msg for w in ["upi", "transfer", "pay", "send", "bhim", "paytm", "phonepe", "gpay"]):
-            tactics.append("payment_request")
-        if any(w in msg for w in ["video call", "digital arrest", "stay on call", "don't disconnect", "skype", "zoom"]):
-            tactics.append("digital_arrest")
-        if any(w in msg for w in ["parcel", "courier", "package", "customs", "fedex", "dhl", "drugs", "contraband"]):
-            tactics.append("courier")
-        # More specific credential detection
-        if any(w in msg for w in ["otp", "one time password", "6 digit", "verification code"]):
-            tactics.append("otp_request")
-        if any(w in msg for w in ["account number", "bank account", "account no", "a/c number", "a/c no"]):
-            tactics.append("account_request")
-        if any(w in msg for w in ["password", "pin", "cvv", "card number", "debit card", "credit card", "atm pin"]):
-            tactics.append("credential")
-            
-        return tactics
-    
-    def generate_response(self, session_id: str, scammer_message: str, message_count: int) -> str:
+        ctx = self._get_ctx(session_id)
+        tactics = self._detect_tactics(message)
+        ctx["tactics"].update(tactics)
+
+        stage = self._compute_stage(risk_score, msg_count, is_scam)
+        ctx["stage"] = stage
+
+        # Determine response pool
+        pool = self._select_pool(ctx, tactics, stage, msg_count, is_scam)
+
+        # Minimum-turn guarantee: if scam detected but msg_count < 5, use
+        # continuation prompts to keep the conversation alive.
+        if is_scam and msg_count < 10 and stage >= 3:
+            # Mix in a continuation prompt 40% of the time for early turns
+            if msg_count < 8 and random.random() < 0.4:
+                pool = self.CONTINUATION_PROMPTS
+
+        response = self._pick_non_repeat(pool, ctx)
+        ctx["history"].append(response)
+        return response
+
+    def get_stage(self, session_id: str) -> int:
+        return self._get_ctx(session_id).get("stage", 1)
+
+    def generate_agent_notes(
+        self,
+        session_id: str,
+        signals: set,
+        scam_type: str,
+        intel: dict,
+        total_msgs: int,
+        duration: int,
+    ) -> str:
         """
-        Generate a believable human response.
-        
-        STAGE-AWARE response generation:
-        - GREETING: Polite but cautious, ask who they are
-        - RAPPORT: Slight confusion, clarifying questions
-        - SUSPICION: Ask for details, documentation, question authenticity
-        - EXTRACTION: Ask for payment details, reference numbers
-        
-        Also adapts to:
-        - Specific scam tactics detected
-        - Intent classification 
-        - What we've already said (to avoid repetition)
+        Produce a detailed behavioural analysis note for the final output.
+        Never empty – always includes at least a summary line.
         """
-        context = self._get_context(session_id)
-        tactics = self._detect_tactics(scammer_message)
-        context["detected_tactics"].update(tactics)
-        
-        # Track last tactic for continuity
-        if tactics:
-            context["last_tactic"] = tactics[-1]
-        
-        # Get current conversation stage from detector
-        stage = detector.get_conversation_stage(session_id)
-        
-        # Get detected intents for more precise response selection
-        detected_intents = detector.classify_intent(scammer_message)
-        
-        # Update escalation level based on current message
+        parts: List[str] = []
+
+        # Scam classification
+        parts.append(f"Classification: {scam_type.replace('_', ' ').title()}")
+
+        # Detected signal layers
+        if signals:
+            labels = sorted(s.replace('_', ' ') for s in signals)
+            parts.append(f"Detected signals: {', '.join(labels)}")
+
+        # Engagement summary
+        parts.append(f"Messages exchanged: {total_msgs}")
+        parts.append(f"Engagement duration: {duration}s")
+
+        # Intelligence summary
+        intel_items = []
+        for key in ("phoneNumbers", "bankAccounts", "upiIds",
+                     "phishingLinks", "emailAddresses"):
+            items = intel.get(key, [])
+            if items:
+                label = key.replace("phishingLinks", "URLs").replace("emailAddresses", "Emails")
+                intel_items.append(f"{len(items)} {label}")
+        if intel_items:
+            parts.append(f"Extracted intelligence: {', '.join(intel_items)}")
+        else:
+            parts.append("No concrete identifiers extracted; scammer did not share actionable data.")
+
+        # Behavioural observations
+        ctx = self._get_ctx(session_id)
+        tactic_list = sorted(ctx.get("tactics", set()))
+        if tactic_list:
+            parts.append(f"Scammer tactics observed: {', '.join(tactic_list)}")
+
+        stage = ctx.get("stage", 1)
+        parts.append(f"Agent engagement reached stage {stage}/5")
+
+        # Ensure notes are never empty
+        return " | ".join(parts) if parts else "Conversation monitored; insufficient data for detailed analysis."
+
+    # -----------------------------------------------------------------
+    # Internals
+    # -----------------------------------------------------------------
+
+    def _get_ctx(self, session_id: str) -> dict:
+        with self._lock:
+            if session_id not in self._contexts:
+                self._contexts[session_id] = {
+                    "stage": 1,
+                    "history": [],
+                    "tactics": set(),
+                    "used": set(),
+                }
+            return self._contexts[session_id]
+
+    @staticmethod
+    def _compute_stage(risk_score: float, msg_count: int, is_scam: bool) -> int:
+        """Determine engagement stage (1-5) from score + turn count."""
+        if not is_scam and risk_score < 30:
+            if msg_count <= 3:
+                return 1
+            return 2
+        if risk_score < 50:
+            return 2
+        if risk_score < 80:
+            return 3 if msg_count <= 5 else 4
+        # High risk
+        if msg_count >= 6:
+            return 5
+        return 4
+
+    def _select_pool(
+        self, ctx: dict, tactics: Set[str], stage: int,
+        msg_count: int, is_scam: bool
+    ) -> list:
+        """Choose the best response pool given context."""
+        # Intent-specific overrides (high priority)
+        if "otp_request" in tactics and msg_count > 1:
+            return self.OTP_RESPONSES
+        if "account_request" in tactics and msg_count > 1:
+            return self.ACCOUNT_RESPONSES
         if "threat" in tactics or "digital_arrest" in tactics:
-            context["escalation_level"] = 3
-        elif "payment_request" in tactics and context["escalation_level"] < 2:
-            context["escalation_level"] = 2
-        elif context["escalation_level"] == 0 and tactics:
-            context["escalation_level"] = 1
-        
-        escalation = context["escalation_level"]
-        
-        # STAGE-AWARE + INTENT-BASED response selection (Sections 2 & 3)
-        pool = None
-        
-        # First check for specific intents that override stage-based selection
-        if Intent.OTP_REQUEST in detected_intents and message_count > 1:
-            pool = self.OTP_RESPONSES
-        elif Intent.BANK_DETAILS_REQUEST in detected_intents and message_count > 1:
-            pool = self.ACCOUNT_NUMBER_RESPONSES
-        elif Intent.UPI_REQUEST in detected_intents and message_count > 1:
-            pool = self.EXTRACTION_STAGE_RESPONSES
-        elif Intent.IDENTITY_PROBE in detected_intents:
-            pool = self.IDENTITY_PROBE_RESPONSES
-        elif "digital_arrest" in tactics:
-            pool = self.DIGITAL_ARREST_RESPONSES
-        elif "courier" in tactics:
-            pool = self.COURIER_RESPONSES
-        elif "credential" in tactics:
-            pool = self.TECH_CONFUSION_RESPONSES
-        
-        # If no specific intent/tactic match, use stage-based responses
-        if pool is None:
-            if stage == ConversationStage.GREETING_STAGE or message_count <= 1:
-                pool = self.GREETING_STAGE_RESPONSES
-            elif stage == ConversationStage.RAPPORT_STAGE:
-                # Mix of rapport responses and intent-specific
-                if Intent.SMALL_TALK in detected_intents:
-                    pool = self.SMALL_TALK_RESPONSES
-                elif Intent.PAYMENT_REQUEST in detected_intents:
-                    pool = self.PAYMENT_REQUEST_RESPONSES
-                else:
-                    pool = self.RAPPORT_STAGE_RESPONSES
-            elif stage == ConversationStage.SUSPICION_STAGE:
-                # Ask for documentation, question authenticity
-                if "threat" in tactics:
-                    pool = self.FEARFUL_RESPONSES
-                elif "verification" in tactics:
-                    pool = self.SUSPICION_STAGE_RESPONSES
-                else:
-                    pool = self.SUSPICION_STAGE_RESPONSES
-            elif stage == ConversationStage.EXTRACTION_STAGE:
-                # High risk, extract payment details
-                if "threat" in tactics and random.random() > 0.4:
-                    pool = self.COMPLIANT_RESPONSES
-                elif "payment_request" in tactics:
-                    pool = self.EXTRACTION_STAGE_RESPONSES
-                else:
-                    pool = self.DETAIL_SEEKING
-                context["intel_requested"] = True
-            else:
-                # Fallback based on escalation
-                if escalation >= 3 or "threat" in tactics:
-                    if message_count > 4 and random.random() > 0.4:
-                        pool = self.COMPLIANT_RESPONSES
-                    else:
-                        pool = self.FEARFUL_RESPONSES
-                elif context["intel_requested"] or message_count > 5:
-                    if random.random() > 0.5:
-                        pool = self.DETAIL_SEEKING
-                    else:
-                        pool = self.TECH_CONFUSION_RESPONSES
-                elif "payment_request" in tactics or escalation >= 2:
-                    pool = self.DETAIL_SEEKING
-                    context["intel_requested"] = True
-                elif "payment_lure" in tactics:
-                    pool = self.PAYMENT_RESPONSES
-                elif "verification" in tactics:
-                    pool = self.VERIFICATION_RESPONSES
-                elif "urgency" in tactics:
-                    pool = self.STALLING_RESPONSES
-                else:
-                    pool = self.RAPPORT_STAGE_RESPONSES
-        
-        # Avoid repeating the same response
-        available = [r for r in pool if r not in context["responses_given"]]
+            return self.THREAT_RESPONSES
+        if "credential" in tactics:
+            return self.TECH_CONFUSION
+        if "payment_lure" in tactics and stage < 4:
+            return self.PAYMENT_LURE_RESPONSES
+
+        # Stage-based selection
+        if stage == 1:
+            return self.STAGE_1
+        if stage == 2:
+            return self.STAGE_2
+        if stage == 3:
+            return self.STAGE_3
+        if stage == 4:
+            # Mix cooperative probing with some stalling
+            return self.STAGE_4 if random.random() > 0.25 else self.STALLING
+        # Stage 5
+        return self.STAGE_5 if random.random() > 0.2 else self.CONTINUATION_PROMPTS
+
+    def _pick_non_repeat(self, pool: list, ctx: dict) -> str:
+        """Pick a response not yet used in this session."""
+        used = ctx["used"]
+        available = [r for r in pool if r not in used]
         if not available:
-            available = pool  # Reset if we've used them all
-        
-        response = random.choice(available)
-        context["responses_given"].append(response)
-        
-        # Add to conversation history
-        context["conversation_history"].append({"role": "agent", "text": response})
-        
-        return response
-    
-    def generate_agent_notes(self, session_id: str, total_messages: int, 
-                             intelligence: dict, 
-                             detection_details: Optional[object] = None) -> str:
-        """
-        Create a comprehensive summary with risk analysis.
-        
-        Includes:
-        - Risk level with emoji indicator
-        - Confidence percentage
-        - Scam type classification
-        - Detected tactics
-        - Extracted intelligence summary
-        """
-        context = self._get_context(session_id)
-        tactics = list(context.get("detected_tactics", []))
-        
-        # Get detection details from detector if available
-        if detection_details is None:
-            detection_details = detector.get_detection_details(session_id)
-        
-        # Build notes components
-        notes_parts = []
-        
-        # 1. Risk Level and Confidence
-        risk_level = getattr(detection_details, 'risk_level', 'medium')
-        confidence = getattr(detection_details, 'confidence', 0.7)
-        risk_emoji = self.RISK_EMOJIS.get(risk_level, "🟡")
-        
-        notes_parts.append(f"{risk_emoji} RISK: {risk_level.upper()} ({confidence*100:.0f}% confidence)")
-        
-        # 2. Scam Type Classification
-        scam_type = getattr(detection_details, 'scam_type', 'unknown')
-        scam_label = self.SCAM_TYPE_LABELS.get(scam_type, scam_type.replace('_', ' ').title())
-        notes_parts.append(f"TYPE: {scam_label}")
-        
-        # 3. Message count
-        notes_parts.append(f"MSGS: {total_messages}")
-        
-        # 4. Detected tactics
-        tactic_labels = []
-        if "urgency" in tactics:
-            tactic_labels.append("urgency")
-        if "threat" in tactics:
-            tactic_labels.append("threats")
-        if "verification" in tactics:
-            tactic_labels.append("impersonation")
-        if "payment_lure" in tactics:
-            tactic_labels.append("money lure")
-        if "payment_request" in tactics:
-            tactic_labels.append("payment request")
-        
-        if tactic_labels:
-            notes_parts.append(f"TACTICS: {', '.join(tactic_labels)}")
-        
-        # 5. Extracted intelligence summary
-        intel_parts = []
-        if intelligence.get("upiIds"):
-            intel_parts.append(f"{len(intelligence['upiIds'])} UPI")
-        if intelligence.get("bankAccounts"):
-            intel_parts.append(f"{len(intelligence['bankAccounts'])} bank")
-        if intelligence.get("phoneNumbers"):
-            intel_parts.append(f"{len(intelligence['phoneNumbers'])} phone")
-        if intelligence.get("phishingLinks"):
-            intel_parts.append(f"{len(intelligence['phishingLinks'])} links")
-        if intelligence.get("emails"):
-            intel_parts.append(f"{len(intelligence['emails'])} email")
-        if intelligence.get("aadhaarNumbers"):
-            intel_parts.append(f"{len(intelligence['aadhaarNumbers'])} aadhaar")
-        if intelligence.get("panNumbers"):
-            intel_parts.append(f"{len(intelligence['panNumbers'])} PAN")
-        if intelligence.get("cryptoWallets"):
-            intel_parts.append(f"{len(intelligence['cryptoWallets'])} crypto")
-        
-        if intel_parts:
-            notes_parts.append(f"INTEL: {', '.join(intel_parts)}")
-        else:
-            notes_parts.append("INTEL: Gathering...")
-        
-        return " | ".join(notes_parts)
-    
-    def generate_monitoring_notes(self, session_id: str, total_messages: int) -> str:
-        """Generate notes for when scam is not yet confirmed."""
-        detection_details = detector.get_detection_details(session_id)
-        
-        risk_level = getattr(detection_details, 'risk_level', 'minimal')
-        confidence = getattr(detection_details, 'confidence', 0.0)
-        score = getattr(detection_details, 'total_score', 0)
-        risk_emoji = self.RISK_EMOJIS.get(risk_level, "⚪")
-        
-        if score == 0:
-            return "Monitoring conversation. No suspicious patterns detected yet."
-        elif confidence < 0.5:
-            return f"{risk_emoji} Monitoring. Risk score: {score} (threshold: 60). Confidence: {confidence*100:.0f}%"
-        else:
-            return f"{risk_emoji} Suspicious activity detected. Score: {score}. Awaiting confirmation threshold (60)."
-    
-    def generate_neutral_response(self, session_id: str, scammer_message: str = "") -> str:
-        """
-        Generate a neutral response for non-scam or uncertain cases.
-        
-        Returns a cautious, human-like reply based on stage and intent.
-        Uses structured persona responses instead of vague replies.
-        """
-        context = self._get_context(session_id)
-        
-        # Analyze intents even for non-scam to stay contextual
-        detected_intents = []
-        if scammer_message:
-            tactics = self._detect_tactics(scammer_message)
-            context["detected_tactics"].update(tactics)
-            context["conversation_history"].append({"role": "scammer", "text": scammer_message})
-            detected_intents = detector.classify_intent(scammer_message)
-        
-        # Select appropriate pool based on detected intent (avoid vague responses)
-        if Intent.IDENTITY_PROBE in detected_intents:
-            pool = self.IDENTITY_PROBE_RESPONSES
-        elif Intent.SMALL_TALK in detected_intents:
-            pool = self.SMALL_TALK_RESPONSES
-        elif Intent.GREETING in detected_intents or Intent.SELF_INTRO in detected_intents:
-            pool = self.GREETING_STAGE_RESPONSES
-        else:
-            # Default to greeting stage (polite but cautious)
-            pool = self.GREETING_STAGE_RESPONSES
-        
-        available = [r for r in pool if r not in context["responses_given"]]
-        if not available:
+            # All exhausted – allow reuse but shuffle for variety
             available = pool
-        
-        response = random.choice(available)
-        context["responses_given"].append(response)
-        context["conversation_history"].append({"role": "agent", "text": response})
-        return response
-    
-    def get_reply(self, session_id: str, scammer_message: str, message_count: int, is_scam: bool) -> str:
-        """
-        Get the appropriate human-like reply.
-        
-        - For confirmed scams: engaging, confused, stalling response
-        - For non-scam/uncertain: neutral, cautious response
-        
-        Never exposes detection status.
-        Adapts dynamically based on conversation history.
-        """
-        context = self._get_context(session_id)
-        
-        # Track current scammer message
-        context["conversation_history"].append({"role": "scammer", "text": scammer_message})
-        
-        if is_scam:
-            return self.generate_response(session_id, scammer_message, message_count)
-        else:
-            return self.generate_neutral_response(session_id, scammer_message)
+        choice = random.choice(available)
+        used.add(choice)
+        return choice
+
+    @staticmethod
+    def _detect_tactics(message: str) -> Set[str]:
+        """Lightweight tactic detection for pool selection (not scoring)."""
+        tactics: Set[str] = set()
+        m = message.lower()
+
+        checks = [
+            (["urgent", "immediate", "hurry", "quickly", "jaldi", "minutes left"], "urgency"),
+            (["verify", "kyc", "update", "confirm", "suspend", "block"], "verification"),
+            (["refund", "prize", "won", "reward", "cashback", "lottery", "winner"], "payment_lure"),
+            (["police", "legal", "arrest", "court", "case", "warrant", "cbi", "ed", "jail"], "threat"),
+            (["upi", "transfer", "pay", "send", "paytm", "phonepe", "gpay", "bhim"], "payment_request"),
+            (["video call", "digital arrest", "stay on call", "don't disconnect"], "digital_arrest"),
+            (["parcel", "courier", "package", "customs", "drugs", "contraband"], "courier"),
+            (["otp", "one time password", "verification code", "6 digit"], "otp_request"),
+            (["account number", "bank account", "a/c number", "a/c no"], "account_request"),
+            (["password", "pin", "cvv", "card number", "debit card", "credit card"], "credential"),
+        ]
+        for keywords, label in checks:
+            if any(k in m for k in keywords):
+                tactics.add(label)
+        return tactics
 
 
-# Single instance used across the app
-agent = HoneypotAgent()
+# Module-level singleton
+engagement_controller = EngagementController()
