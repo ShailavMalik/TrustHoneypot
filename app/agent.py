@@ -48,6 +48,10 @@ class HoneypotAgent:
         "Yes, hello? Who am I speaking with?",
         "Namaste. Aap kaun? I wasn't expecting any calls today.",
         "Hello, this is unexpected. May I know who you are?",
+        "Ji boliye? Kaun hai? I don't have this number saved.",
+        "Hello? Is this a business call? Please identify yourself first.",
+        "Haan ji? Who is calling from this number?",
+        "Sorry, I think you have wrong number. Who do you want to speak to?",
     ]
     
     # RAPPORT_STAGE: Slight confusion, ask clarifying questions  
@@ -60,6 +64,10 @@ class HoneypotAgent:
         "I don't recall applying for anything. What is this regarding?",
         "You've lost me. Can you clarify what you're talking about?",
         "I'm confused beta. Slow down and explain properly please.",
+        "What company are you calling from? I need to understand first.",
+        "Hold on, let me sit down. Now tell me slowly what is the matter?",
+        "I'm sorry, I don't understand technical things. Can you explain simply?",
+        "Are you sure you have the right person? What is this about?",
     ]
     
     # SUSPICION_STAGE: Ask for details, request documentation, question authenticity
@@ -72,6 +80,10 @@ class HoneypotAgent:
         "This doesn't sound right. Let me call your official helpline to confirm.",
         "I'm skeptical. My bank never calls me like this. They always send SMS.",
         "Before I do anything, I need something in writing. Email or letter please.",
+        "My son warned me about fraud calls. Give me your supervisor's number.",
+        "What is your official designation? I want to note it down for my records.",
+        "Can you send me this on official letterhead? I need proper proof.",
+        "Let me verify - what is your company's toll-free number? I will call back.",
     ]
     
     # EXTRACTION_STAGE: Ask for payment details, reference numbers, UPI/account info
@@ -84,6 +96,10 @@ class HoneypotAgent:
         "Which bank account should I transfer to? Give me IFSC code also.",
         "I have Paytm and PhonePe. Tell me the UPI ID letter by letter.",
         "Okay, I'm ready to pay. Just tell me the reference number and amount.",
+        "Should I transfer to your personal account or company account?",
+        "What name will appear when I send money? Just to confirm it's correct.",
+        "Okay tell me - account number, IFSC code, and beneficiary name. I am noting.",
+        "UPI is not working for me. Give me account number for NEFT transfer.",
     ]
     
     # =========================================================================
@@ -97,6 +113,9 @@ class HoneypotAgent:
         "I don't share my details with unknown callers. Please identify yourself.",
         "Ji, main yahan hoon. But who is calling and why?",
         "Why are you asking about me? You called my number.",
+        "You have my number already. First tell me who you are.",
+        "I don't give out personal information on phone. Who is calling?",
+        "Before I answer, please tell me - which company you are from?",
     ]
     
     # SMALL_TALK responses - redirect to actual topic
@@ -106,6 +125,9 @@ class HoneypotAgent:
         "Thik hoon. Now please tell me the reason for calling.",
         "Good, thanks. But why are you calling? What is this about?",
         "I'm okay. But let's get to the point - what do you want?",
+        "Ji ji, sab theek hai. Ab bataiye kya kaam hai?",
+        "Fine fine. Now please explain why you are calling me.",
+        "All good here. But I'm busy - please tell me quickly what this is about.",
     ]
     
     # TOPIC_PROBE responses - when checking if it's about specific topic
@@ -115,6 +137,9 @@ class HoneypotAgent:
         "Is something wrong with my account? I used ATM yesterday only.",
         "I don't understand what problem you're referring to. Please explain.",
         "My bank sends me SMS for everything. I didn't get any message about this.",
+        "Which account are you talking about? I have multiple accounts.",
+        "I just spoke to my branch manager last week. He didn't mention anything.",
+        "Bank problem? But I have been using my card normally. What is wrong?",
     ]
     
     # PAYMENT_REQUEST responses - when they ask for money
@@ -124,6 +149,9 @@ class HoneypotAgent:
         "Why should I send money? This doesn't make sense to me.",
         "Processing fee? But if you're giving me something, why pay first?",
         "I don't send money to unknown accounts. Explain the reason properly.",
+        "Wait, why should I pay? I didn't ask for any service.",
+        "Payment kyu? What am I paying for? Please explain in detail.",
+        "My son handles all payments. Let me ask him first before sending anything.",
     ]
     
     # When they mention account issues, verification, KYC
@@ -211,6 +239,12 @@ class HoneypotAgent:
         "ED? Income Tax? Sir I file my returns every year honestly. There must be mistake!",
         "Please sir, I have heart condition. Don't arrest me. I will pay whatever fine.",
         "I am not moving sir. Sitting in same place. Please just solve this matter.",
+        "Sir please, my grandchildren are in the other room. Don't send police to my house.",
+        "I am keeping video on sir. See, I am not going anywhere. Please help me resolve this.",
+        "Supreme Court order? Sir I have never even been to court in my life! This is wrong!",
+        "Money laundering? Sir I am pension holder, my income is only Rs 40,000 per month!",
+        "Sir my hands are shaking. I am 68 years old. Please tell me what to do to fix this.",
+        "I am staying on call only sir. But please let me inform my son also? He is in Bangalore.",
     ]
     
     # Courier/parcel scam responses
@@ -221,6 +255,12 @@ class HoneypotAgent:
         "From China? Sir I don't know anyone in China. This is definitely some mistake.",
         "What was in the parcel? I didn't send anything to anyone. Check tracking ID properly.",
         "Illegal items? Sir I am school teacher retired. I don't know what you are saying!",
+        "Customs? But I haven't ordered anything from abroad. Please check the sender name.",
+        "Contraband? Sir what is contraband? I only order books and medicines from Amazon.",
+        "Someone used my Aadhaar? Sir that is identity theft! I am the victim here!",
+        "Sir please check properly. I am 65 year old retired person. Why would I send drugs?",
+        "Parcel from Taiwan? Sir I don't even know where Taiwan is on the map!",
+        "Please give me the tracking number. I will check with courier company myself.",
     ]
     
     # Trust building / compliance responses (to keep them engaged)
@@ -232,6 +272,9 @@ class HoneypotAgent:
         "Okay I will cooperate fully. Please just make sure my name is cleared.",
         "I am grateful you are helping me sir. Otherwise I didn't know what to do.",
         "Fine fine, I will send the money. Just tell me the correct details once more.",
+        "Sir you have been very patient with me. I trust you now. Please guide me.",
+        "Okay sir, I will do exactly as you say. Just make sure this problem gets solved.",
+        "I was scared earlier but now I understand. Tell me the payment process clearly.",
     ]
     
     # Technical confusion responses (very believable for elderly persona)
@@ -243,6 +286,11 @@ class HoneypotAgent:
         "Wait, which app to open? I have Paytm, PhonePe, and BHIM all three.",
         "My phone is very slow. Let me restart the app once.",
         "The screen is frozen. Hold on, I am pressing the button...",
+        "UPI pin? I forgot it sir. Let me try my ATM pin... no that's also not working.",
+        "Internet banking is asking for grid value. Which grid? I don't understand.",
+        "The OTP is coming but message is not opening. Let me restart the phone.",
+        "Sir the payment is showing failed. What should I do now?",
+        "My phone storage is full. Let me delete some photos and try again.",
     ]
     
     # OTP specific responses - when they ask for OTP directly
