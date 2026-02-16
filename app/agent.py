@@ -27,22 +27,22 @@ class EngagementController:
         "Who gave you my number? I don't usually get calls like this.",
     ]
 
-    # Stage 2 — Verifying authenticity
+    # Stage 2 — Verifying authenticity (enhanced with intelligence extraction)
     STAGE_2: List[str] = [
-        "How do I know this is legitimate? Can you provide some proof?",
-        "I need to verify this. What is your official employee ID?",
-        "Can you give me a reference number? I want to check with the main office.",
-        "This doesn't sound right. My bank never calls me like this.",
-        "Can you send me an official letter or email first?",
-        "Before I do anything, I need something in writing.",
-        "My son warned me about calls like these. Give me your supervisor's number.",
-        "What is your official designation? I want to note it down.",
-        "Can you send this on official letterhead? I need proper documentation.",
-        "Let me verify — what is your organisation's toll-free number?",
-        "I'm sorry, but I cannot take action without seeing official documentation.",
-        "Is there a website where I can check this myself?",
-        "Which department exactly are you calling from? I will cross-check.",
-        "Can you spell your full name for me? I want to verify with your office.",
+        "How do I know this is legitimate? Can you give me your employee ID and callback number?",
+        "I need to verify this. What is your official email address and employee ID number?",
+        "Can you give me a reference number and your direct phone number? I want to check with the main office.",
+        "This doesn't sound right. What is your official contact number and department name?",
+        "Can you send me an official email first? What email address should I expect it from?",
+        "Before I do anything, please share your full name, ID number, and official contact details.",
+        "My son warned me about calls like these. Give me your supervisor's name and phone number.",
+        "What is your official designation and employee ID? I want to note it down.",
+        "Can you send this on official letterhead? What is the email address and reference number?",
+        "Let me verify — what is your organisation's toll-free number and your direct extension?",
+        "Please provide your department name, employee ID, and a reference number for my records.",
+        "Is there a website link you can share? I want to verify this online.",
+        "Which branch or department are you calling from? Give me the phone number and address.",
+        "Can you spell your full name and provide your contact number? I want to verify with your office.",
     ]
 
     # Stage 3 — Concerned and cautious
@@ -63,40 +63,40 @@ class EngagementController:
         "Hold on, my phone battery is very low. Let me put it on charging.",
     ]
 
-    # Stage 4 — Cooperative but probing
+    # Stage 4 — Cooperative but probing (enhanced intelligence extraction)
     STAGE_4: List[str] = [
-        "Okay, I believe you. But can you give me your direct callback number?",
-        "Fine, I'll cooperate. What department ID should I reference?",
-        "Alright sir, tell me what to do. But first, what is the case reference number?",
-        "I'm ready to help. Can you give me the official branch or office name?",
-        "Okay okay, I'll do it. Just tell me which number should I call back to verify?",
-        "I trust you now. But for my records, what is your badge or ID number?",
-        "Sir, I want to cooperate fully. Can you resend that link once more?",
-        "I understand the urgency. Please share the details again, my network dropped.",
-        "Fine, I'll proceed. But can you email me the instructions also?",
-        "Alright, let me note everything down. What is the reference number again?",
-        "Okay, I'm convinced. Just tell me — is there a complaint number I should save?",
-        "I'll do whatever is needed. Which email can I write to for confirmation?",
-        "I believe you are genuine. Can you share an official contact for future reference?",
-        "My son said I should always get a receipt number. Can you give me one?",
+        "Okay, I believe you. Give me your direct callback number and employee ID so I can reach you.",
+        "Fine, I'll cooperate. What department ID and reference number should I keep for my records?",
+        "Alright sir, tell me what to do. What is the case reference number and your contact phone number?",
+        "I'm ready to help. Give me the official branch name, address, and contact number please.",
+        "Okay okay, I'll do it. Tell me your phone number, email, and reference ID for verification.",
+        "I trust you now. For my records, give me your full name, badge number, and office phone.",
+        "Sir, I want to cooperate fully. Can you resend that link and tell me the website address?",
+        "I understand the urgency. Share the account details, UPI ID, and amount again please.",
+        "Fine, I'll proceed. Can you email me at what address? And give me yours also.",
+        "Alright, let me note everything. What is the reference number, your contact, and department?",
+        "Okay, I'm convinced. Give me the complaint number, your phone number, and supervisor's contact.",
+        "I'll do whatever is needed. Which email should I write to? And what is your official phone number?",
+        "I believe you are genuine. Share your official contact number, email, and department details.",
+        "My son said I should always get documentation. Can you share your ID, phone, and receipt number?",
     ]
 
-    # Stage 5 — Extraction-focused questioning
+    # Stage 5 — Extraction-focused questioning (maximum intelligence elicitation)
     STAGE_5: List[str] = [
-        "Okay, I'm ready. What is the UPI ID I should send to?",
-        "Tell me the account number slowly. I am writing it down.",
-        "Which bank account should I transfer to? Give me the full details.",
-        "What is the exact amount and where to send? Spell the UPI ID for me.",
-        "I have my banking app open. Give me the account number and name.",
-        "Should I send by UPI or bank transfer? Tell me the details for both.",
-        "I'm ready to pay. Just tell me the reference number and amount clearly.",
-        "What name will show when I transfer? I want to confirm it's correct.",
-        "UPI is showing an error. Can you give me the bank account number instead?",
-        "My app is asking for beneficiary name and account number. Please tell me.",
-        "Give me the full details — account number, name, and branch.",
-        "I'll send right now. Repeat the UPI ID letter by letter please.",
-        "Okay, should I do it from my savings account? Tell me where to send.",
-        "Let me try sending a small amount first. What's the UPI ID again?",
+        "Okay, I'm ready. What is the exact UPI ID, account holder name, and phone number to send to?",
+        "Tell me the complete account number slowly. I am writing it down. Also give me the IFSC code.",
+        "Which bank account should I transfer to? Give me account number, name, branch, and IFSC.",
+        "What is the exact amount and where to send? Spell the UPI ID letter by letter for me.",
+        "I have my banking app open. Give me the full account number, beneficiary name, and phone number.",
+        "Should I send by UPI or bank transfer? Tell me the UPI ID and also the bank account details.",
+        "I'm ready to pay. Give me the reference number, amount, UPI ID, and your contact number.",
+        "What name will show when I transfer? I want to confirm. Also tell me your phone number.",
+        "UPI is showing an error. Give me the bank account number, IFSC code, and account holder name.",
+        "My app is asking for beneficiary details. Tell me account number, name, phone, and IFSC code.",
+        "Give me complete details — account number, account holder name, bank name, branch, and IFSC.",
+        "I'll send right now. Repeat the UPI ID letter by letter and tell me your registered phone number.",
+        "Okay, should I do it from my savings account? Tell me your UPI ID, bank account, and contact number.",
+        "Let me try sending a small amount first. What's the exact UPI ID and your WhatsApp number?",
     ]
 
     # Intent-specific response pools (override stage when scammer uses specific tactics)
