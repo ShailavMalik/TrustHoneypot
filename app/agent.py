@@ -102,42 +102,42 @@ class EngagementController:
     # Intent-specific response pools (override stage when scammer uses specific tactics)
 
     OTP_RESPONSES: List[str] = [
-        "OTP? Wait, let me check my messages… which number does it come from?",
-        "My OTP is not coming. Network is weak here. Can you wait a few minutes?",
-        "I got several messages. Which OTP do you need? There are 3-4 here.",
-        "The OTP says 'do not share with anyone'. Should I still give it?",
-        "It says the OTP expired already. Can you send a new one?",
-        "I pressed the wrong button and the message got deleted. Please resend.",
-        "OTP is showing but the screen is dim. Let me increase brightness…",
-        "My eyes are weak, I cannot read small text. It's showing 4… 7… wait…",
-        "OTP has come but phone is asking for fingerprint. One second…",
-        "My son changed my SIM last week. OTP might be going to old number.",
+        "OTP? Wait, let me check my messages… which number does it come from? Is it from what number?",
+        "My OTP is not coming. Network is weak here. What number should I expect SMS from?",
+        "I got several messages. Which OTP do you need? There are 3-4 here. What number sent it?",
+        "The OTP says 'do not share with anyone'. Should I still give it? And to whom am I sharing this?",
+        "It says the OTP expired already. Can you resend it? What is the sender's number or email?",
+        "I pressed the wrong button and message got deleted. Please resend and tell me your phone number.",
+        "OTP is showing but screen is dim. Let me increase brightness… But what is your official contact?",
+        "My eyes are weak, I cannot read small text. Can you tell me your phone number first?",
+        "OTP has come but phone is asking for fingerprint. Meanwhile, give me your contact details.",
+        "My son changed my SIM last week. OTP might go to old number. What is your callback number?",
     ]
 
     ACCOUNT_RESPONSES: List[str] = [
-        "Account number? Which one — savings or fixed deposit? Let me find the passbook.",
-        "My account number is very long. Let me read slowly… where did I keep that paper?",
-        "Is it the number on the back of the card? It's scratched, I can't read it.",
-        "Let me open my net banking app… it's asking for password… one moment.",
-        "I don't remember the full number. It's in the passbook upstairs. Give me 5 minutes.",
-        "Debit card number or account number? Both are different, right?",
-        "Let me call my son first. He has all the details noted in his phone.",
-        "My passbook shows two numbers — account number and something called CIF. Which one?",
-        "I can see it partially… it starts with 3… wait, let me get my glasses.",
-        "Account number I can give but the book is locked in the almirah. Just a minute.",
+        "Account number? Which one — savings or fixed deposit? And tell me your contact number first.",
+        "My account number is very long. But first, give me your employee ID and phone number.",
+        "Is it the number on the back of the card? Let me check. What is your official phone number?",
+        "Let me open my net banking app… Meanwhile, what is your callback number and employee ID?",
+        "I don't remember the full number. Give me your contact details first so I can verify.",
+        "Debit card number or account number? Both are different, right? What is your official email?",
+        "Let me call my son first. But give me your phone number and reference ID to show him.",
+        "My passbook shows two numbers. Which one you need? Also give me your contact information.",
+        "I can see it partially… it starts with 3… But what is your phone number and department?",
+        "Account number I can give but first tell me — what is your official contact and employee ID?",
     ]
 
     THREAT_RESPONSES: List[str] = [
-        "Please don't involve police! I'll cooperate fully. Just tell me what to do.",
-        "Oh no, I didn't know this was serious. Please help me fix it!",
-        "I don't want legal trouble. I'm a retired person. Please guide me.",
-        "You're scaring me. Is there really a case against me?",
-        "I am a senior citizen. Please have patience with me.",
-        "I'll do whatever you say. Please don't file any case.",
-        "Please sir, I have health issues. Just tell me the solution.",
-        "I am shaking with fear. Please tell me the amount and where to send.",
-        "I will cooperate fully. My family doesn't know about this. Please help.",
-        "Arrest? Sir, I have never done anything wrong in my life!",
+        "Please don't involve police! I'll cooperate. Tell me what to do and give me your contact number.",
+        "Oh no, I didn't know this was serious. What is your name, phone number, and case reference?",
+        "I don't want legal trouble. I'm a retired person. Give me your official contact and badge number.",
+        "You're scaring me. Is there really a case? Give me the case number and your phone number.",
+        "I am a senior citizen. Please be patient. What is your supervisor's phone number and email?",
+        "I'll do whatever you say. Please don't file any case. What is the amount and your UPI ID?",
+        "Please sir, I have health issues. Tell me your contact number and the solution quickly.",
+        "I am shaking with fear. Tell me the amount, where to send, and your contact details.",
+        "I will cooperate fully. Give me your phone number, case reference, and payment details.",
+        "Arrest? Sir, I have never done anything wrong! What is your badge number and department phone?",
     ]
 
     PAYMENT_LURE_RESPONSES: List[str] = [
@@ -153,36 +153,36 @@ class EngagementController:
         "Send me an official email about this. Then I'll proceed.",
     ]
 
-    # Account compromise/blocking/KYC responses - contextual to urgent bank messages
+    # Account compromise/blocking/KYC responses - contextual to urgent bank messages (enhanced probing)
     ACCOUNT_COMPROMISE_RESPONSES: List[str] = [
-        "Oh no! My account is compromised? What happened exactly?",
-        "Blocked? But I haven't done anything wrong! Please explain.",
-        "Wait, which account are you talking about? I have multiple banks.",
-        "How did this happen? I check my account regularly!",
-        "Please don't block my account! What do I need to do?",
-        "This is very worrying. Can you tell me what suspicious activity you found?",
-        "KYC update? But I updated it just last year. Are you sure?",
-        "I'm very concerned now. Let me get my documents. What do you need?",
-        "My money is safe, right? Please tell me nothing has been withdrawn!",
-        "Wait, let me check my bank app... okay it's opening. What should I look for?",
-        "2 hours only? That's not much time! What details do you need from me?",
-        "But I just used my card yesterday and it was working fine!",
-        "Is this about my SBI account or the other one? I'm confused.",
-        "Let me call my branch also. What is the reference number for this issue?",
+        "Oh no! My account is compromised? What happened exactly? Give me your employee ID and phone number.",
+        "Blocked? But I haven't done anything wrong! Please explain and give me your contact details.",
+        "Wait, which account are you talking about? I have multiple banks. What is your official number?",
+        "How did this happen? I check my account regularly! What is your name and callback number?",
+        "Please don't block my account! What do I need to do? Give me the reference number and your phone.",
+        "This is very worrying. Can you tell me what suspicious activity you found? And your contact details?",
+        "KYC update? But I updated it just last year. Are you sure? What is your department phone number?",
+        "I'm very concerned now. Let me get my documents. What exactly do you need and your contact?",
+        "My money is safe, right? Please tell me nothing has been withdrawn! What is your official email?",
+        "Wait, let me check my bank app... What should I look for? And give me your employee details.",
+        "2 hours only? That's not much time! What details do you need from me? And your phone number?",
+        "But I just used my card yesterday and it was working fine! What is your name and contact number?",
+        "Is this about my SBI account or the other one? I'm confused. Give me your callback number.",
+        "Let me call my branch also. What is the reference number for this issue and your phone number?",
     ]
 
-    # Courier/parcel scam responses
+    # Courier/parcel scam responses (enhanced with probing questions)
     COURIER_RESPONSES: List[str] = [
-        "Parcel? But I haven't ordered anything recently. What parcel?",
-        "Which courier company? I don't remember any pending deliveries.",
-        "Customs? But I didn't order anything from abroad!",
-        "This must be a mistake. Can you check the tracking number again?",
-        "Drugs? Sir, I am a respectable person! This is some mix-up!",
-        "Maybe someone used my address by mistake? What is in the parcel?",
-        "I need to understand this. Who sent this parcel to me?",
-        "Can you tell me the sender's name? Maybe then I'll remember.",
-        "This is very shocking! I don't know anything about illegal items!",
-        "Please verify the address once more. I never ordered any such thing.",
+        "Parcel? But I haven't ordered anything recently. What parcel? Give me the tracking number.",
+        "Which courier company? I don't remember any pending deliveries. What is your phone number?",
+        "Customs? But I didn't order anything from abroad! What is the parcel tracking ID and your contact?",
+        "This must be a mistake. Can you check the tracking number again? And give me your office number.",
+        "Drugs? Sir, I am a respectable person! This is some mix-up! What is the sender's name and number?",
+        "Maybe someone used my address by mistake? What is in the parcel? Give me the tracking details.",
+        "I need to understand this. Who sent this parcel to me? What is the sender's contact information?",
+        "Can you tell me the sender's name and phone number? Maybe then I'll remember. What's the tracking ID?",
+        "This is very shocking! I don't know anything about illegal items! Give me your supervisor's number.",
+        "Please verify the address once more. I never ordered any such thing. What is your contact number?",
     ]
 
     TECH_CONFUSION: List[str] = [
@@ -211,20 +211,20 @@ class EngagementController:
         "Sorry, I didn't hear that clearly. Can you repeat everything once more?",
     ]
 
-    # Continuation prompts — used when scam detected early to extract more intel
+    # Continuation prompts — used when scam detected early to extract more intel (enhanced)
     CONTINUATION_PROMPTS: List[str] = [
-        "Can you give me a callback number in case we get disconnected?",
-        "What is your official department ID? I want to note it for my records.",
-        "Can you share the UPI ID for the refund verification?",
-        "The link didn't open. Can you resend it please?",
-        "What is the case reference number? I need it for my notes.",
-        "Which branch or office are you calling from?",
-        "Sorry, my network dropped for a moment. Can you repeat that?",
-        "One minute, I'm checking my documents. Please wait.",
-        "My phone just restarted. Can you tell me again from the beginning?",
-        "Before I proceed, can you give me an email address for written proof?",
-        "What number should I call back if this call drops?",
-        "I want to note down your details. What is your full name and designation?",
+        "Can you give me a callback number and your full name in case we get disconnected?",
+        "What is your official department ID, phone number, and email? I want to note it for my records.",
+        "Can you share the UPI ID, account details, and your phone number for the refund verification?",
+        "The link didn't open. Can you resend it and tell me the website name and your contact number?",
+        "What is the case reference number, your employee ID, and phone number? I need it for my notes.",
+        "Which branch or office are you calling from? Give me the address and landline number.",
+        "Sorry, my network dropped for a moment. Share your phone number and the payment details again.",
+        "One minute, I'm checking documents. Meanwhile, give me your official email and contact number.",
+        "My phone just restarted. Tell me again from the beginning with your name and phone number.",
+        "Before I proceed, give me an email address for written proof and your direct phone number.",
+        "What number should I call back if this call drops? And what is your employee ID?",
+        "I want to note down your details. What is your full name, contact number, and department?",
     ]
 
     def __init__(self) -> None:
