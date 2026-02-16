@@ -67,12 +67,20 @@ class EngagementMetrics(BaseModel):
 
 
 class FinalOutput(BaseModel):
-    """Full callback payload sent to the GUVI evaluation endpoint."""
+    """Full callback payload sent to the GUVI evaluation endpoint.
+    
+    EXACT format required by documentation:
+    - sessionId: string
+    - scamDetected: boolean
+    - totalMessagesExchanged: number (at top level)
+    - extractedIntelligence: object with 5 arrays
+    - engagementMetrics: object with totalMessagesExchanged and engagementDurationSeconds
+    - agentNotes: string
+    """
 
     sessionId: str
-    status: str = "success"
     scamDetected: bool = False
-    scamType: str = "unknown"
+    totalMessagesExchanged: int = 0
     extractedIntelligence: ExtractedIntelligence = Field(default_factory=ExtractedIntelligence)
     engagementMetrics: EngagementMetrics = Field(default_factory=EngagementMetrics)
     agentNotes: str = ""

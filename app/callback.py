@@ -30,29 +30,44 @@ def build_final_output(
     duration_seconds: int,
     agent_notes: str,
 ) -> dict:
-    """Assemble the callback payload with engagement guarantees (>= 5 msgs, >= 60s)."""
+    """Assemble the callback payload with engagement guarantees (>= 5 msgs, >= 60s).
+    
+    EXACT format required by documentation - no extra fields:
+    - sessionId
+    - scamDetected (boolean)
+    - totalMessagesExchanged (at top level AND inside engagementMetrics)
+    - extractedIntelligence (5 arrays only: phoneNumbers, bankAccounts, upiIds, phishingLinks, emailAddresses)
+    - engagementMetrics (totalMessagesExchanged, engagementDurationSeconds)
+    - agentNotes
+    """
     safe_messages = max(total_messages, 5)
     safe_duration = duration_seconds if duration_seconds >= 60 else 75
 
+    # Build agentNotes based on detection
+    if agent_notes:
+        notes = agent_notes
+    elif scam_detected:
+        notes = "Scam detected and intelligence extracted."
+    else:
+        notes = "No scam detected. Conversation monitored for suspicious activity but no definitive scam indicators found."
+
+    # EXACT format per documentation - validate all required fields exist
     return {
         "sessionId": session_id,
-        "status": "success",
-        "scamDetected": scam_detected,
-        "scamType": scam_type or "unknown",
+        "scamDetected": bool(scam_detected),  # Ensure strictly boolean
         "totalMessagesExchanged": safe_messages,
         "extractedIntelligence": {
-            "phoneNumbers":      intelligence.get("phoneNumbers", []),
-            "bankAccounts":      intelligence.get("bankAccounts", []),
-            "upiIds":            intelligence.get("upiIds", []),
-            "phishingLinks":     intelligence.get("phishingLinks", []),
-            "emailAddresses":    intelligence.get("emailAddresses", []),
-            "suspiciousKeywords": [],
+            "phoneNumbers": intelligence.get("phoneNumbers", []) or [],
+            "bankAccounts": intelligence.get("bankAccounts", []) or [],
+            "upiIds": intelligence.get("upiIds", []) or [],
+            "phishingLinks": intelligence.get("phishingLinks", []) or [],
+            "emailAddresses": intelligence.get("emailAddresses", []) or [],
         },
         "engagementMetrics": {
             "totalMessagesExchanged": safe_messages,
             "engagementDurationSeconds": safe_duration,
         },
-        "agentNotes": agent_notes or "Conversation monitored.",
+        "agentNotes": notes,
     }
 
 
