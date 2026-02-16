@@ -12,20 +12,29 @@ class IntelligenceStore:
 
     # Phone patterns (Indian formats)
     PHONE_PATTERNS = [
-        r'\+91[\s\-]?[6-9]\d{9}\b',          # +91 9876543210 / +91-9876543210
-        r'\b91[\s\-]?[6-9]\d{9}\b',           # 91 9876543210  / 919876543210
-        r'\b0[6-9]\d{9}\b',                    # 09876543210
-        r'\b[6-9]\d{9}\b',                     # 9876543210
-        r'\b[6-9]\d{4}[\s\-]\d{5}\b',          # 98765-43210 / 98765 43210
+        r'\+91[\s\-]?[6-9]\d{9}\b',              # +91 9876543210 / +91-9876543210
+        r'\+91[\s\-]?[6-9]\d{4}[\s\-]\d{5}',     # +91 98765 43210 / +91-98765-43210
+        r'\b91[\s\-]?[6-9]\d{9}\b',               # 91 9876543210  / 919876543210
+        r'\b0[6-9]\d{9}\b',                        # 09876543210
+        r'\b[6-9]\d{9}\b',                         # 9876543210
+        r'\b[6-9]\d{4}[\s\-]\d{5}\b',              # 98765-43210 / 98765 43210
+        r'\b[6-9]\d{3}[\s\-]\d{6}\b',              # 9876-543210 / 9876 543210
         r'\b[6-9]\d{2}[\s\-]\d{3}[\s\-]\d{4}\b',  # 987-654-3210
-        r'\(\+91\)[\s\-]?[6-9]\d{9}',          # (+91)9876543210
+        r'\(\+91\)[\s\-]?[6-9]\d{9}',              # (+91)9876543210
     ]
 
     # Bank account numbers (9–18 digits)
     BANK_ACCOUNT_PATTERN = r'\b\d{9,18}\b'
 
-    # UPI IDs (name@provider)
-    UPI_PATTERN = r'\b[\w.\-]{2,}@[a-zA-Z][a-zA-Z0-9]{1,19}\b'
+    # Contextual bank extraction (keyword-adjacent, catches shorter numbers)
+    CONTEXTUAL_BANK_PATTERNS = [
+        r'(?:account|a/c|acct)\s*(?:no|number|num|#)?[\s:.#\-]*(\d{6,18})',
+        r'(?:bank\s*(?:account|a/c))\s*(?:no|number|num|#)?[\s:.#\-]*(\d{6,18})',
+        r'(?:transfer\s*to|deposit\s*to|send\s*to)\s*(?:account\s*)?(\d{9,18})',
+    ]
+
+    # UPI IDs (negative lookahead prevents partial-email false positives)
+    UPI_PATTERN = r'\b[\w.\-]{2,}@[a-zA-Z][a-zA-Z0-9]{1,30}\b(?![.\-])'
 
     # Email addresses
     EMAIL_PATTERN = r'\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b'
@@ -116,6 +125,10 @@ class IntelligenceStore:
                     data["phoneNumbers"].add(raw)
                     data["phoneNumbers"].add(f"+91-{cleaned}")
                     data["phoneNumbers"].add(f"+91{cleaned}")
+                    data["phoneNumbers"].add(f"+91 {cleaned}")
+                    data["phoneNumbers"].add(f"91-{cleaned}")
+                    data["phoneNumbers"].add(f"91{cleaned}")
+                    data["phoneNumbers"].add(f"91 {cleaned}")
 
     def _extract_bank_accounts(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Match 9–18 digit sequences, filtering out likely phones and years."""
@@ -125,9 +138,14 @@ class IntelligenceStore:
                 continue
             if n == 10 and match[0] in '6789':
                 continue
-            if n == 4 and match.startswith('20'):
-                continue
             data["bankAccounts"].add(match)
+            if n >= 12:
+                data["bankAccounts"].add(' '.join(match[i:i+4] for i in range(0, n, 4)))
+
+        for pattern in self.CONTEXTUAL_BANK_PATTERNS:
+            for match in re.findall(pattern, text, re.IGNORECASE):
+                if 6 <= len(match) <= 18:
+                    data["bankAccounts"].add(match)
 
     def _extract_upi_ids(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Match UPI IDs — known providers or short dot-free domains. Store both cases."""
@@ -158,8 +176,9 @@ class IntelligenceStore:
         """Match URLs, shorteners, and suspicious-TLD links."""
         for pattern in self.URL_PATTERNS:
             for match in re.findall(pattern, text, re.IGNORECASE):
-                if len(match) > 5:
-                    data["phishingLinks"].add(match)
+                cleaned = re.sub(r'[.,;:!?\)\]>]+$', '', match)
+                if len(cleaned) > 5:
+                    data["phishingLinks"].add(cleaned)
 
     def _ensure_session(self, session_id: str) -> Dict[str, Set[str]]:
         with self._lock:

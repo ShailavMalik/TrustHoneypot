@@ -153,6 +153,38 @@ class EngagementController:
         "Send me an official email about this. Then I'll proceed.",
     ]
 
+    # Account compromise/blocking/KYC responses - contextual to urgent bank messages
+    ACCOUNT_COMPROMISE_RESPONSES: List[str] = [
+        "Oh no! My account is compromised? What happened exactly?",
+        "Blocked? But I haven't done anything wrong! Please explain.",
+        "Wait, which account are you talking about? I have multiple banks.",
+        "How did this happen? I check my account regularly!",
+        "Please don't block my account! What do I need to do?",
+        "This is very worrying. Can you tell me what suspicious activity you found?",
+        "KYC update? But I updated it just last year. Are you sure?",
+        "I'm very concerned now. Let me get my documents. What do you need?",
+        "My money is safe, right? Please tell me nothing has been withdrawn!",
+        "Wait, let me check my bank app... okay it's opening. What should I look for?",
+        "2 hours only? That's not much time! What details do you need from me?",
+        "But I just used my card yesterday and it was working fine!",
+        "Is this about my SBI account or the other one? I'm confused.",
+        "Let me call my branch also. What is the reference number for this issue?",
+    ]
+
+    # Courier/parcel scam responses
+    COURIER_RESPONSES: List[str] = [
+        "Parcel? But I haven't ordered anything recently. What parcel?",
+        "Which courier company? I don't remember any pending deliveries.",
+        "Customs? But I didn't order anything from abroad!",
+        "This must be a mistake. Can you check the tracking number again?",
+        "Drugs? Sir, I am a respectable person! This is some mix-up!",
+        "Maybe someone used my address by mistake? What is in the parcel?",
+        "I need to understand this. Who sent this parcel to me?",
+        "Can you tell me the sender's name? Maybe then I'll remember.",
+        "This is very shocking! I don't know anything about illegal items!",
+        "Please verify the address once more. I never ordered any such thing.",
+    ]
+
     TECH_CONFUSION: List[str] = [
         "The app is showing some error. Can I try a different method?",
         "How do I check my balance? The app is asking for fingerprint…",
@@ -211,18 +243,25 @@ class EngagementController:
         """Generate a context-appropriate reply that never reveals detection."""
         ctx = self._get_context(session_id)
 
-        tactics = self._detect_tactics(message)
-        ctx["tactics"].update(tactics)
+        # Detect tactics from CURRENT message only for response selection
+        current_tactics = self._detect_tactics(message)
+        # Store accumulated tactics for analysis/reporting (separate from response selection)
+        ctx["tactics"].update(current_tactics)
 
         stage = self._compute_stage(risk_score, msg_count, is_scam)
         ctx["stage"] = stage
 
-        pool = self._select_pool(ctx, tactics, stage, msg_count, is_scam)
+        # Use CURRENT message tactics for pool selection, not accumulated
+        pool = self._select_pool(ctx, current_tactics, stage, msg_count, is_scam)
 
-        # Mix in continuation prompts ~40% to proactively extract intel
-        if is_scam and msg_count < 10 and stage >= 3:
-            if msg_count < 8 and random.random() < 0.4:
-                pool = self.CONTINUATION_PROMPTS
+        # Only mix in continuation prompts when:
+        # 1. It's a confirmed scam
+        # 2. We're in later stages (4+) with enough engagement (msg_count >= 4)
+        # 3. No strong tactic was detected (empty tactics = generic stage-based response)
+        # 4. Random 30% chance to keep it natural
+        if (is_scam and stage >= 4 and msg_count >= 4 and 
+            len(current_tactics) == 0 and random.random() < 0.3):
+            pool = self.CONTINUATION_PROMPTS
 
         response = self._pick_non_repeat(pool, ctx)
         ctx["history"].append(response)
@@ -320,20 +359,31 @@ class EngagementController:
         msg_count: int,
         is_scam: bool,
     ) -> list:
-        """Choose the best response pool based on tactics and stage."""
-        # Intent overrides
-        if "otp_request" in tactics and msg_count > 1:
+        """Choose the best response pool based on CURRENT message tactics and stage."""
+        # Priority 1: Direct asks for sensitive info (respond contextually)
+        if "otp_request" in tactics:
             return self.OTP_RESPONSES
-        if "account_request" in tactics and msg_count > 1:
+        if "account_request" in tactics:
             return self.ACCOUNT_RESPONSES
-        if "threat" in tactics or "digital_arrest" in tactics:
-            return self.THREAT_RESPONSES
         if "credential" in tactics:
             return self.TECH_CONFUSION
-        if "payment_lure" in tactics and stage < 4:
+        
+        # Priority 2: Specific scam type detection (before generic urgency/verification)
+        if "courier" in tactics:
+            return self.COURIER_RESPONSES
+        if "threat" in tactics or "digital_arrest" in tactics:
+            return self.THREAT_RESPONSES
+        if "payment_lure" in tactics:
             return self.PAYMENT_LURE_RESPONSES
+        
+        # Priority 3: Account compromise/blocking/KYC scenarios (generic urgency)
+        if "verification" in tactics or "urgency" in tactics:
+            # Match the account/KYC/blocking context
+            if msg_count <= 2:
+                return self.ACCOUNT_COMPROMISE_RESPONSES
+            return self.STAGE_3 if random.random() > 0.4 else self.ACCOUNT_COMPROMISE_RESPONSES
 
-        # Stage-based selection
+        # Stage-based selection if no specific tactic detected
         pools = {
             1: self.STAGE_1,
             2: self.STAGE_2,
@@ -370,32 +420,46 @@ class EngagementController:
         """Light-weight tactic detection for response-pool selection."""
         tactics: Set[str] = set()
         lowered = message.lower()
+        # Add spaces for word boundary matching
+        spaced = f" {lowered} "
 
         keyword_map = [
             (["urgent", "immediate", "hurry", "quickly", "jaldi",
-              "minutes left"],                                          "urgency"),
-            (["verify", "kyc", "update", "confirm", "suspend", "block"], "verification"),
-            (["refund", "prize", "won", "reward", "cashback",
+              "minutes left", "hours left", "within minutes",
+              "immediately"],                                           "urgency"),
+            (["verify", "kyc", "update", "confirm", "suspend", "block",
+              "blocked", "compromised", "hacked", "locked", "frozen",
+              "expire", "expired", "deactivate"],                       "verification"),
+            (["refund", "prize", "won ", " win ", "reward", "cashback",
               "lottery", "winner"],                                     "payment_lure"),
-            (["police", "legal", "arrest", "court", "case",
-              "warrant", "cbi", "ed", "jail"],                          "threat"),
-            (["upi", "transfer", "pay", "send", "paytm",
+            (["police", "legal action", "arrest", "court", "warrant",
+              "cbi ", " cbi", "enforcement directorate", " ed ",
+              "jail", " fir", "fir ", "crime branch", "legal case"],    "threat"),
+            (["upi", "transfer", " pay ", "paytm",
               "phonepe", "gpay", "bhim"],                               "payment_request"),
             (["video call", "digital arrest", "stay on call",
-              "don't disconnect"],                                      "digital_arrest"),
+              "don't disconnect", "do not disconnect"],                 "digital_arrest"),
             (["parcel", "courier", "package", "customs",
-              "drugs", "contraband"],                                   "courier"),
+              "drugs", "contraband", "fedex", "dhl"],                   "courier"),
             (["otp", "one time password", "verification code",
-              "6 digit"],                                               "otp_request"),
+              "6 digit", "6-digit"],                                    "otp_request"),
             (["account number", "bank account", "a/c number",
-              "a/c no"],                                                "account_request"),
+              "a/c no", "share your account"],                          "account_request"),
             (["password", "pin", "cvv", "card number",
               "debit card", "credit card"],                             "credential"),
         ]
 
         for keywords, label in keyword_map:
-            if any(kw in lowered for kw in keywords):
-                tactics.add(label)
+            for kw in keywords:
+                # Use spaced version for short keywords that need word boundaries
+                if len(kw) <= 4 or kw.startswith(" ") or kw.endswith(" "):
+                    if kw in spaced:
+                        tactics.add(label)
+                        break
+                else:
+                    if kw in lowered:
+                        tactics.add(label)
+                        break
 
         return tactics
 

@@ -131,8 +131,11 @@ def _log_callback(
     try:
         logs = []
         if os.path.exists(CALLBACK_LOG_FILE):
-            with open(CALLBACK_LOG_FILE, "r", encoding="utf-8") as fh:
-                logs = json.load(fh)
+            try:
+                with open(CALLBACK_LOG_FILE, "r", encoding="utf-8") as fh:
+                    logs = json.load(fh)
+            except (json.JSONDecodeError, ValueError):
+                logs = []
         logs.append(record)
         with open(CALLBACK_LOG_FILE, "w", encoding="utf-8") as fh:
             json.dump(logs, fh, indent=2, default=str)
