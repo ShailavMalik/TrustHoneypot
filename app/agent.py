@@ -198,6 +198,62 @@ class EngagementController:
         "Sir, the screen went black. I think my phone switched off. One second.",
     ]
 
+    # Tech support scam responses — confused elderly persona dealing with "hacked computer"
+    TECH_SUPPORT_RESPONSES: List[str] = [
+        "My computer is hacked? Oh no! But what is a virus exactly? Tell me your contact number.",
+        "AnyDesk? What is that? I don't know how to download. Can you give me your phone number to guide me?",
+        "Screen sharing? My grandson does that. What app should I download? And what is your phone number?",
+        "I'm very scared now. Is my data safe? What is your employee ID and contact number?",
+        "Remote access? I don't understand these technical things. Give me your official number.",
+        "Wait, my computer is very slow. Let me restart it. Meanwhile give me your callback number.",
+        "Microsoft called me? But I use a very old computer. What is your name and official phone number?",
+        "I see a warning on screen. What does it say? Can you give me your customer care number?",
+        "How do I know you are really from the company? Share your employee ID and direct phone number.",
+        "My son handles the computer usually. Give me your phone number, I'll have him call you.",
+    ]
+
+    # Job fraud responses — interested but cautious job seeker  
+    JOB_FRAUD_RESPONSES: List[str] = [
+        "Work from home? That sounds interesting! What company is this? Give me the official website and contact.",
+        "How much can I earn? And what exactly is the work? Who is your company and phone number?",
+        "Training fee? But don't companies usually pay for training? What is the registration contact number?",
+        "This sounds too good to be true. Can you send me an official email with the job details?",
+        "My friend got cheated in a similar offer. How do I verify this is real? Share your company phone.",
+        "Daily earnings? That's very tempting. But what is the company name and official contact number?",
+        "Telegram group for work? I'm not very active on Telegram. Give me a phone number instead.",
+        "Is there a joining fee? Real companies don't charge, right? What is your supervisor's number?",
+        "Let me discuss with my family first. What is your WhatsApp number and company website?",
+        "Product reviews? How does that work? Share the company details and your official contact.",
+    ]
+
+    # Investment scam responses — interested but cautious investor
+    INVESTMENT_RESPONSES: List[str] = [
+        "Guaranteed returns? That sounds great! But how do I verify this? Give me your company details.",
+        "Double my money? Which company is this? Give me the SEBI registration number and your phone.",
+        "I'm interested but my son says to be careful. What is your official website and contact number?",
+        "How much minimum investment? And where do I transfer? Share the account details and your number.",
+        "Crypto trading? I've heard of Bitcoin. But is it safe? What is your official phone number?",
+        "Monthly income? That would really help. Share the company name, registration, and your phone number.",
+        "My neighbor invested somewhere and lost money. How is this different? Give me your contact.",
+        "Risk-free? Nothing is risk-free. Can you send me documentation? What is your email and phone?",
+        "Which platform is this on? Is it registered with SEBI? Give me verifiable details and your number.",
+        "I have some savings I could invest. But first give me your full name and official contact details.",
+    ]
+
+    # Identity theft responses — confused but slowly complying
+    IDENTITY_RESPONSES: List[str] = [
+        "Aadhaar number? But isn't it supposed to be kept private? Why do you need it? Give me your contact.",
+        "PAN card? I keep it in the locker. Let me find it. Meanwhile tell me your phone number.",
+        "Why do you need my date of birth? That's personal information. What is your employee ID?",
+        "My son told me never to share these details. Give me your supervisor's number first.",
+        "ID proof? Which one do you need? I have voter card also. What is your official phone number?",
+        "Selfie with Aadhaar? That sounds suspicious. Give me your official email and contact number first.",
+        "Wait, let me get my reading glasses to find the documents. What is your callback number?",
+        "I'm worried about sharing identity details on phone. Can you send a written request by email?",
+        "My Aadhaar card is laminated and hard to read. Give me your contact, I'll call back with details.",
+        "Passport number? I don't have it memorized. Share your department details and phone number.",
+    ]
+
     STALLING: List[str] = [
         "Hold on, someone is at the door. One minute please.",
         "Can you wait? I need to find my reading glasses.",
@@ -240,35 +296,50 @@ class EngagementController:
         is_scam: bool,
         scam_type: str = "unknown",
     ) -> str:
-        """Generate a context-appropriate reply that never reveals detection."""
+        """Generate a context-appropriate reply that never reveals detection.
+        
+        The engagement system uses a 5-stage progression:
+        Stage 1: Initial confusion - questioning caller identity
+        Stage 2: Verification attempts - requesting proof and documentation
+        Stage 3: Concern & caution - hesitant but willing to cooperate
+        Stage 4: Cooperation - actively seeking details and probing
+        Stage 5: Extraction - ready to follow instructions and provide data
+        
+        Returns a non-repetitive response that:
+        - Matches the scammer's current tactic (OTP, account details, threats, etc.)
+        - Progresses through engagement stages based on risk score and message count
+        - Extracts actionable intelligence (names, phone numbers, account details)
+        - Maintains victim-persona consistency without revealing detection
+        """
         ctx = self._get_context(session_id)
 
         # Detect tactics from CURRENT message only for response selection
+        # This ensures responses match what the scammer is asking for RIGHT NOW
         current_tactics = self._detect_tactics(message)
-        # Store accumulated tactics for analysis/reporting (separate from response selection)
+        # Store accumulated tactics for final analysis/reporting (separate concern)
         ctx["tactics"].update(current_tactics)
 
+        # Compute engagement stage based on risk progression and message count
         stage = self._compute_stage(risk_score, msg_count, is_scam)
         ctx["stage"] = stage
 
-        # Use CURRENT message tactics for pool selection, not accumulated
+        # Select response pool based on CURRENT tactics and engagement stage
+        # This ensures contextually appropriate responses
         pool = self._select_pool(ctx, current_tactics, stage, msg_count, is_scam)
 
-        # Only mix in continuation prompts when:
-        # 1. It's a confirmed scam
-        # 2. We're in later stages (4+) with enough engagement (msg_count >= 4)
-        # 3. No strong tactic was detected (empty tactics = generic stage-based response)
-        # 4. Random 30% chance to keep it natural
+        # Occasionally use continuation prompts in later stages to maintain engagement
+        # These are generic probing questions that keep the scammer talking
         if (is_scam and stage >= 4 and msg_count >= 4 and 
             len(current_tactics) == 0 and random.random() < 0.3):
             pool = self.CONTINUATION_PROMPTS
 
+        # Pick an unused response from the pool (prevents repetition)
         response = self._pick_non_repeat(pool, ctx)
         ctx["history"].append(response)
         return response
 
     def get_stage(self, session_id: str) -> int:
-        """Return the current engagement stage (1–5)."""
+        """Return the current engagement stage (1–5) for this session."""
         return self._get_context(session_id).get("stage", 1)
 
     def generate_agent_notes(
@@ -341,14 +412,23 @@ class EngagementController:
     def _compute_stage(
         risk_score: float, msg_count: int, is_scam: bool,
     ) -> int:
-        """Determine engagement stage (1–5) from risk and message count."""
+        """Determine engagement stage (1–5) from risk and message count.
+        
+        Stage progression logic:
+        - Legitimate messages (not scam, low risk) stay in stages 1-2
+        - Moderate risk (50-80) escalates from stage 2→3 or 3→4
+        - High risk (80+) reaches stages 4-5 where extraction occurs
+        
+        Message count influences stage to ensure sufficient engagement before tactics
+        like credential requests or payment details are attempted.
+        """
         if not is_scam and risk_score < 30:
             return 1 if msg_count <= 3 else 2
         if risk_score < 50:
             return 2
         if risk_score < 80:
             return 3 if msg_count <= 5 else 4
-        # High risk
+        # High risk (score >= 80)
         return 5 if msg_count >= 6 else 4
 
     def _select_pool(
@@ -359,7 +439,19 @@ class EngagementController:
         msg_count: int,
         is_scam: bool,
     ) -> list:
-        """Choose the best response pool based on CURRENT message tactics and stage."""
+        """Choose the best response pool based on CURRENT message tactics and stage.
+        
+        Selection priority ensures contextually appropriate responses:
+        1. Direct sensitive-info requests (OTP, account, passwords) → immediate handling
+        2. Specific scam types (courier, tech_support, job, investment) → category replies
+        3. Threat/legal pressure → threat-specific responses
+        4. Payment lures (prizes, cashback) → cautious engagement
+        5. Identity theft attempts → careful compliance
+        6. Account compromise/KYC → context-matched responses
+        7. No tactic detected → pure stage-based progression
+        
+        This prevents response mismatch where victim responds to wrong tactic.
+        """
         # Priority 1: Direct asks for sensitive info (respond contextually)
         if "otp_request" in tactics:
             return self.OTP_RESPONSES
@@ -371,19 +463,36 @@ class EngagementController:
         # Priority 2: Specific scam type detection (before generic urgency/verification)
         if "courier" in tactics:
             return self.COURIER_RESPONSES
+        if "tech_support" in tactics:
+            return self.TECH_SUPPORT_RESPONSES
+        if "job_fraud" in tactics:
+            return self.JOB_FRAUD_RESPONSES
+        if "investment" in tactics:
+            return self.INVESTMENT_RESPONSES
+        if "identity_theft" in tactics:
+            return self.IDENTITY_RESPONSES
+        
+        # Priority 3: Threat/legal/digital arrest
         if "threat" in tactics or "digital_arrest" in tactics:
             return self.THREAT_RESPONSES
         if "payment_lure" in tactics:
             return self.PAYMENT_LURE_RESPONSES
         
-        # Priority 3: Account compromise/blocking/KYC scenarios (generic urgency)
+        # Priority 4: Account compromise/blocking/KYC scenarios (generic urgency)
         if "verification" in tactics or "urgency" in tactics:
             # Match the account/KYC/blocking context
             if msg_count <= 2:
                 return self.ACCOUNT_COMPROMISE_RESPONSES
             return self.STAGE_3 if random.random() > 0.4 else self.ACCOUNT_COMPROMISE_RESPONSES
 
+        # Priority 5: Payment request without specific tactic
+        if "payment_request" in tactics:
+            if stage >= 4:
+                return self.STAGE_5  # Ready to "pay" - extract account details
+            return self.STAGE_4 if stage >= 3 else self.STAGE_3
+
         # Stage-based selection if no specific tactic detected
+        # This allows natural progression when scammer hasn't revealed their tactic yet
         pools = {
             1: self.STAGE_1,
             2: self.STAGE_2,
@@ -394,12 +503,14 @@ class EngagementController:
 
         if stage == 4:
             # Mix cooperative probing with stalling for realism
+            # Stalling adds human-like delays without breaking engagement
             return (
                 self.STAGE_4 if random.random() > 0.25
                 else self.STALLING
             )
 
-        # Stage 5 — heavy extraction, occasional continuation prompts
+        # Stage 5 — heavy extraction focus with occasional continuation prompts
+        # At this point, victim is ready to provide sensitive data
         return (
             self.STAGE_5 if random.random() > 0.2
             else self.CONTINUATION_PROMPTS
@@ -417,36 +528,124 @@ class EngagementController:
 
     @staticmethod
     def _detect_tactics(message: str) -> Set[str]:
-        """Light-weight tactic detection for response-pool selection."""
+        """Light-weight tactic detection for response-pool selection.
+        
+        Scans the current message for keywords/phrases that indicate specific
+        scam tactics. Uses word-boundary checking for short keywords (<=4 chars)
+        to prevent false positives (e.g., 'ed' inside 'blocked').
+        
+        Returns a set of tactic labels used by _select_pool() to choose
+        the most contextually appropriate response pool.
+        """
         tactics: Set[str] = set()
         lowered = message.lower()
         # Add spaces for word boundary matching
         spaced = f" {lowered} "
 
         keyword_map = [
+            # Urgency signals
             (["urgent", "immediate", "hurry", "quickly", "jaldi",
               "minutes left", "hours left", "within minutes",
-              "immediately"],                                           "urgency"),
+              "immediately", "time running", "act now", "right now",
+              "asap", "turant", "abhi", "fauran", "expiring",
+              "deadline", "last chance", "final notice", "don't wait",
+              "limited time", "time sensitive", "today only"],          "urgency"),
+            # Account/KYC/Verification
             (["verify", "kyc", "update", "confirm", "suspend", "block",
               "blocked", "compromised", "hacked", "locked", "frozen",
-              "expire", "expired", "deactivate"],                       "verification"),
+              "expire", "expired", "deactivate", "deactivated",
+              "unauthorized", "suspicious activity", "re-kyc", "ekyc",
+              "ckyc", "account at risk", "security alert",
+              "unusual activity", "abnormal transaction",
+              "identity verification", "mandatory update"],            "verification"),
+            # Lure/prize/cashback
             (["refund", "prize", "won ", " win ", "reward", "cashback",
-              "lottery", "winner"],                                     "payment_lure"),
+              "lottery", "winner", "lucky draw", "jackpot", "kbc",
+              "congratulations", "bonus", "claim your", "selected for",
+              "free gift", "mega offer", "scratch card",
+              "bumper draw", "inaam", "jeet", "crorepati"],            "payment_lure"),
+            # Legal/arrest threats
             (["police", "legal action", "arrest", "court", "warrant",
               "cbi ", " cbi", "enforcement directorate", " ed ",
-              "jail", " fir", "fir ", "crime branch", "legal case"],    "threat"),
+              "jail", " fir", "fir ", "crime branch", "legal case",
+              "prosecution", "imprisonment", "custody", "detention",
+              "penalty", "fine ", "summon", "blacklisted", "watchlist",
+              "interpol", "lookout notice", "section 420",
+              "money laundering", "terror funding", "hawala",
+              "narcotics", "ncb ", "non-bailable", "criminal case",
+              "giraftaar", "kanuni kaarwahi", "adalat",
+              "legal notice", "legal proceedings"],                    "threat"),
+            # Payment/transfer requests
             (["upi", "transfer", " pay ", "paytm",
-              "phonepe", "gpay", "bhim"],                               "payment_request"),
+              "phonepe", "gpay", "bhim", "neft", "rtgs", "imps",
+              "bank transfer", "send money", "processing fee",
+              "registration fee", "advance payment", "demand draft",
+              "security deposit", "verification fee", "service charge",
+              "clearance fee", "handling fee", "token money",
+              "booking amount", "stamp duty", "gst charge",
+              "activation fee", "membership fee",
+              "scan qr", "scan code", "collect request"],              "payment_request"),
+            # Digital arrest specific
             (["video call", "digital arrest", "stay on call",
-              "don't disconnect", "do not disconnect"],                 "digital_arrest"),
+              "don't disconnect", "do not disconnect",
+              "online arrest", "video arrest", "stay on video",
+              "do not cut the call", "keep the call on",
+              "video verification", "face verification"],              "digital_arrest"),
+            # Courier/parcel scam
             (["parcel", "courier", "package", "customs",
-              "drugs", "contraband", "fedex", "dhl"],                   "courier"),
+              "drugs", "contraband", "fedex", "dhl", "blue dart",
+              "dtdc", "india post", "speed post", "shipment",
+              "consignment", "tracking number", "customs duty",
+              "import duty", "seized", "intercepted", "x-ray",
+              "illegal items", "narcotics found"],                     "courier"),
+            # OTP/code requests
             (["otp", "one time password", "verification code",
-              "6 digit", "6-digit"],                                    "otp_request"),
+              "6 digit", "6-digit", "4 digit", "4-digit",
+              "share the code", "read the otp", "send the otp",
+              "tell me the otp", "what is the otp",
+              "sms code", "otp batao", "code batao",
+              "confirm otp", "enter otp"],                             "otp_request"),
+            # Account number requests
             (["account number", "bank account", "a/c number",
-              "a/c no", "share your account"],                          "account_request"),
+              "a/c no", "share your account", "account details",
+              "beneficiary details", "ifsc code", "account holder",
+              "savings account", "current account"],                   "account_request"),
+            # Credential/card requests
             (["password", "pin", "cvv", "card number",
-              "debit card", "credit card"],                             "credential"),
+              "debit card", "credit card", "atm pin", "mpin",
+              "upi pin", "net banking", "internet banking",
+              "login id", "username", "grid value",
+              "security question"],                                    "credential"),
+            # Tech support / remote access
+            (["anydesk", "teamviewer", "quicksupport", "remote access",
+              "screen share", "screen sharing", "remote desktop",
+              "download this app", "install this app",
+              "virus detected", "malware", "computer hacked",
+              "system compromised", "tech support",
+              "customer care number", "helpdesk"],                     "tech_support"),
+            # Job/work from home scam
+            (["work from home", "online job", "data entry",
+              "typing job", "earn daily", "earn from home",
+              "part time job", "part-time job", "freelance work",
+              "review products", "like and subscribe",
+              "task based", "commission based",
+              "telegram group", "telegram channel",
+              "training fee", "joining fee"],                          "job_fraud"),
+            # Investment scam
+            (["invest", "trading", "forex", "crypto",
+              "bitcoin", "guaranteed returns", "double your money",
+              "mutual fund tip", "stock tip", "insider info",
+              "demat account", "ipo", "share market",
+              "risk free", "zero risk", "monthly income",
+              "daily profit", "mlm", "network marketing",
+              "referral bonus", "binary option"],                      "investment"),
+            # Identity theft
+            (["aadhaar number", "aadhar number", "pan card",
+              "pan number", "voter id", "passport number",
+              "date of birth", "mother's name",
+              "share your aadhaar", "share your pan",
+              "selfie with id", "photo of aadhaar",
+              "identity proof", "address proof"],                      "identity_theft"),
         ]
 
         for keywords, label in keyword_map:
