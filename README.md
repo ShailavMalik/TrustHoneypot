@@ -1,6 +1,6 @@
 # Agentic Honey-Pot API
 
-**Scam Detection, Engagement & Intelligence Extraction System**
+**Scam Detection, ML-Powered Engagement & Intelligence Extraction System**
 
 Built for the **India AI Impact Buildathon (GUVI)** — Problem Statement 2
 
@@ -10,9 +10,9 @@ Built for the **India AI Impact Buildathon (GUVI)** — Problem Statement 2
 
 A **FastAPI** backend that acts as an intelligent honeypot for phone/SMS scammers:
 
-1. **Detects scams** — 9-layer risk scoring engine with cumulative scoring
-2. **Engages the scammer** — 5-stage adaptive persona (confused elderly Indian victim)
-3. **Extracts intelligence** — Phones, bank accounts, UPI IDs, URLs, emails
+1. **Detects scams** — 20-layer risk scoring engine (12 core + 8 auxiliary) with cumulative scoring across Hindi/English/Hinglish
+2. **Engages the scammer** — 5-stage adaptive persona powered by a deep ML engagement engine
+3. **Extracts intelligence** — Phones, bank accounts, UPI IDs, URLs, emails, Aadhaar, PAN, IFSC codes
 4. **Reports to evaluator** — Sends structured callback to GUVI endpoint on every eligible turn
 
 Response format:
@@ -23,18 +23,67 @@ Response format:
 
 ---
 
+## Architecture
+
+### Pipeline
+
+```
+POST /honeypot
+  │
+  ├── 1. Session Management   (memory.py)
+  ├── 2. History Replay        (detector + extractor)
+  ├── 3. Risk Analysis         (detector.py — 20 signal layers)
+  ├── 4. Intelligence Extract  (extractor.py — 10 entity types)
+  ├── 5. ML Response Selection (engagement_ml.py → agent.py)
+  └── 6. Callback Dispatch     (callback.py)
+```
+
+### Deep ML Engagement Engine
+
+A lightweight neural architecture (`engagement_ml.py`) that replaces random response selection with ML-ranked selection:
+
+```
+┌─────────────┐     ┌────────────────┐
+│ TextEncoder  │────▶│ SelfAttention  │
+│ (char+word)  │     │ (4-head)       │──┐
+└─────────────┘     └────────────────┘  │
+                                         │   ┌──────────────┐
+┌─────────────────┐                      ├──▶│ IntentHead   │
+│ ConversationGRU │──────────────────────┤   │ (15 classes) │
+│ (64-dim state)  │                      │   └──────────────┘
+└─────────────────┘                      │
+                                         │   ┌──────────────┐
+┌──────────────────┐                     └──▶│ Engagement   │
+│ ResponseEncoder  │────────────────────────▶│ Scorer       │
+│ (pre-computed)   │                         │ (rank pool)  │
+└──────────────────┘                         └──────────────┘
+```
+
+| Component                  | Role                                                       | Dimensions         |
+| -------------------------- | ---------------------------------------------------------- | ------------------ |
+| **TextEncoder**            | Char-trigram + word-bigram feature hashing → dense vectors | 128-d              |
+| **MultiHeadSelfAttention** | 4-head attention for cross-feature interaction             | 4 × 32             |
+| **GRUCell**                | Recurrent conversation-state tracking across turns         | 64-d hidden        |
+| **NeuralIntentClassifier** | Hybrid FC + anchor-similarity + keyword-overlap            | 15 classes         |
+| **EngagementScorer**       | Feed-forward network ranking response candidates           | 345 → 128 → 64 → 1 |
+
+**Performance:** ~0.7ms inference · ~300KB memory · numpy-only (no GPU required) · graceful fallback to random if numpy is unavailable
+
+---
+
 ## Project Structure
 
 ```
 app/
-├── main.py          # FastAPI routes + pipeline
-├── auth.py          # API key auth (x-api-key header)
-├── models.py        # Pydantic schemas
-├── detector.py      # Multi-layer risk scoring
-├── extractor.py     # Regex intelligence extraction
-├── agent.py         # 5-stage engagement controller
-├── memory.py        # Thread-safe session store
-└── callback.py      # Callback builder + sender
+├── main.py            # FastAPI routes + pipeline
+├── auth.py            # API key auth (x-api-key header)
+├── models.py          # Pydantic schemas
+├── detector.py        # 20-layer risk scoring engine
+├── extractor.py       # Regex intelligence extraction (10 entity types)
+├── agent.py           # 5-stage engagement controller (ML-enhanced)
+├── engagement_ml.py   # Deep ML engagement engine (neural response ranking)
+├── memory.py          # Thread-safe session store
+└── callback.py        # Callback builder + sender
 ```
 
 ---
@@ -186,7 +235,30 @@ Set `API_KEY` and `CALLBACK_URL` in Railway environment variables.
 
 ## Dependencies
 
-fastapi 0.115.0 · uvicorn 0.32.1 · pydantic 2.10.3 · pydantic-settings 2.6.1 · python-dotenv 1.0.1 · requests 2.32.3
+fastapi 0.115.0 · uvicorn 0.32.1 · pydantic 2.10.3 · pydantic-settings 2.6.1 · python-dotenv 1.0.1 · requests 2.32.3 · numpy ≥1.24
+
+---
+
+## How the ML Engine Works
+
+1. **Text Encoding** — Each scammer message is encoded via FNV-1a feature hashing (char-trigrams + word-bigrams) into a 128-d dense vector. No vocabulary or tokenizer needed.
+
+2. **Self-Attention** — A 4-head scaled dot-product attention layer enables cross-feature interaction across the embedding dimensions.
+
+3. **Conversation GRU** — A gated recurrent unit maintains a 64-d hidden state per session, capturing conversation momentum, escalation pace, and topic shifts across turns.
+
+4. **Intent Classification** — A hybrid classifier blends three signals:
+   - FC network logits (35%)
+   - Cosine similarity to pre-computed intent anchors (30%)
+   - Direct keyword-overlap counting (35%)
+
+   Classifies into 15 intents: urgency, authority, OTP request, payment request, suspension, prize lure, suspicious URL, emotional pressure, legal threat, courier, tech support, job fraud, investment, identity theft, neutral.
+
+5. **Response Scoring** — All candidate responses are batch-scored through a 3-layer feed-forward network (345→128→64→1) using concatenated features: message embedding, response embedding, GRU state, intent probabilities, and 10 hand-crafted engagement features.
+
+6. **Context Bonuses** — Stage-aware boosts reward confusion in early stages, probing in middle stages, and intelligence extraction in late stages.
+
+7. **Temperature Sampling** — Softmax with τ=0.6 balances exploitation of top-scored responses with exploration for natural variety.
 
 ---
 

@@ -1,9 +1,16 @@
 """5-stage adaptive engagement engine. Generates human-like victim-persona
-responses to keep scammers talking and extract intelligence."""
+responses to keep scammers talking and extract intelligence.
 
+Phase 2.1 — ML-enhanced response selection:
+  Uses DeepEngagementEngine for neural response ranking when available,
+  with graceful fallback to weighted-random selection."""
+
+import logging
 import random
 import threading
 from typing import Dict, List, Set
+
+logger = logging.getLogger(__name__)
 
 
 class EngagementController:
@@ -316,6 +323,12 @@ class EngagementController:
         # Detect tactics from CURRENT message only for response selection
         # This ensures responses match what the scammer is asking for RIGHT NOW
         current_tactics = self._detect_tactics(message)
+
+        # Supplement keyword tactics with neural intent classification
+        current_tactics = self._augment_tactics_with_ml(
+            session_id, message, current_tactics
+        )
+
         # Store accumulated tactics for final analysis/reporting (separate concern)
         ctx["tactics"].update(current_tactics)
 
@@ -333,8 +346,10 @@ class EngagementController:
             len(current_tactics) == 0 and random.random() < 0.3):
             pool = self.CONTINUATION_PROMPTS
 
-        # Pick an unused response from the pool (prevents repetition)
-        response = self._pick_non_repeat(pool, ctx)
+        # ML-optimised response selection (falls back to random if ML unavailable)
+        response = self._ml_select_or_fallback(
+            session_id, message, pool, ctx, stage, risk_score, is_scam,
+        )
         ctx["history"].append(response)
         return response
 
@@ -515,6 +530,89 @@ class EngagementController:
             self.STAGE_5 if random.random() > 0.2
             else self.CONTINUATION_PROMPTS
         )
+
+    def _ml_select_or_fallback(
+        self,
+        session_id: str,
+        message: str,
+        pool: list,
+        ctx: dict,
+        stage: int,
+        risk_score: float,
+        is_scam: bool,
+    ) -> str:
+        """Use the deep ML engine for response ranking; fall back to random."""
+        try:
+            from app.engagement_ml import deep_engine
+
+            if deep_engine.is_ready:
+                result = deep_engine.select_response(
+                    session_id=session_id,
+                    scammer_message=message,
+                    candidate_pool=pool,
+                    used_responses=ctx["used"],
+                    stage=stage,
+                    risk_score=risk_score,
+                    is_scam=is_scam,
+                    conversation_history=ctx["history"],
+                )
+                if result is not None:
+                    ctx["used"].add(result)
+                    return result
+        except Exception as exc:
+            logger.debug(f"ML engagement fallback: {exc}")
+
+        # Fallback — weighted-random with recency penalty
+        return self._pick_non_repeat(pool, ctx)
+
+    @staticmethod
+    def _augment_tactics_with_ml(
+        session_id: str,
+        message: str,
+        keyword_tactics: Set[str],
+    ) -> Set[str]:
+        """Merge neural intent predictions into keyword-detected tactics.
+
+        Only adds intents where the neural classifier is confident (>0.35)
+        AND keyword detection missed them — avoids double-counting.
+        """
+        try:
+            from app.engagement_ml import deep_engine, INTENT_NAMES
+
+            if not deep_engine.is_ready:
+                return keyword_tactics
+
+            probs = deep_engine.get_intent_probs(session_id, message)
+            if probs is None:
+                return keyword_tactics
+
+            # Map neural intent names → tactic labels used by _select_pool
+            _intent_to_tactic = {
+                "urgency": "urgency",
+                "authority": "verification",
+                "otp_request": "otp_request",
+                "payment_request": "payment_request",
+                "suspension": "verification",
+                "prize_lure": "payment_lure",
+                "legal_threat": "threat",
+                "courier": "courier",
+                "tech_support": "tech_support",
+                "job_fraud": "job_fraud",
+                "investment": "investment",
+                "identity_theft": "identity_theft",
+                "emotional": "threat",
+            }
+
+            augmented = set(keyword_tactics)
+            for intent_name, prob in probs.items():
+                if prob > 0.35 and intent_name in _intent_to_tactic:
+                    tactic = _intent_to_tactic[intent_name]
+                    if tactic not in augmented:
+                        augmented.add(tactic)
+            return augmented
+
+        except Exception:
+            return keyword_tactics
 
     def _pick_non_repeat(self, pool: list, ctx: dict) -> str:
         """Pick an unused response from the pool. Resets if all used."""

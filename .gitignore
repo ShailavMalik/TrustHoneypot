@@ -40,3 +40,4 @@ dist/
 
 *.pdf
 self_test_eval.py
+validate_format.py
