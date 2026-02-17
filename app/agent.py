@@ -107,44 +107,85 @@ class EngagementController:
     ]
 
     # Intent-specific response pools (override stage when scammer uses specific tactics)
+    # DESIGN: Each pool has diverse response THEMES to avoid repetitive patterns.
+    # Themes: asks_phone, asks_account, asks_id, stalls, confused, compliant,
+    #         tech_issue, emotional, family_consult, asks_different_info
 
     OTP_RESPONSES: List[str] = [
-        "OTP? Wait, let me check my messages… which number does it come from? Is it from what number?",
-        "My OTP is not coming. Network is weak here. What number should I expect SMS from?",
-        "I got several messages. Which OTP do you need? There are 3-4 here. What number sent it?",
-        "The OTP says 'do not share with anyone'. Should I still give it? And to whom am I sharing this?",
-        "It says the OTP expired already. Can you resend it? What is the sender's number or email?",
-        "I pressed the wrong button and message got deleted. Please resend and tell me your phone number.",
-        "OTP is showing but screen is dim. Let me increase brightness… But what is your official contact?",
-        "My eyes are weak, I cannot read small text. Can you tell me your phone number first?",
-        "OTP has come but phone is asking for fingerprint. Meanwhile, give me your contact details.",
-        "My son changed my SIM last week. OTP might go to old number. What is your callback number?",
+        # --- stalling / tech confusion ---
+        "OTP? Wait, let me check my messages… I am getting so many SMS nowadays.",
+        "My phone is very slow today. Let me close some apps and check for the OTP.",
+        "The OTP says 'do not share with anyone'. Should I still give it? That is confusing.",
+        "It says the OTP expired already. Can you send a new one? These things expire so fast.",
+        "I pressed the wrong button and the message got deleted. Can you resend it?",
+        "I got 3 or 4 messages. Which one is the OTP? They all look the same to me.",
+        "OTP has come but my phone is asking for fingerprint. I can never get that to work.",
+        "My eyes are weak, the text is very small. Let me get my reading glasses first.",
+        "My son changed my SIM last week. Maybe the OTP went to the old number?",
+        "The screen went dim again. One second, let me increase the brightness.",
+        # --- confused / hesitant ---
+        "But my bank always says never share OTP with anyone. Why is this different?",
+        "I am confused — is this the same OTP my bank sends for transactions?",
+        "Which bank is this OTP from? I have accounts in SBI and also in PNB.",
+        "OTP for what exactly? Is this for unblocking or for some transaction?",
+        "I don't understand these OTP things. My son usually handles all this.",
+        # --- emotional / persona ---
+        "Please don't rush me. My heart beats fast when people pressure me like this.",
+        "I'm getting very anxious. Just give me one minute to collect myself.",
+        "Sir, I am a 65-year-old retired person. These technical things confuse me.",
+        # --- asks for different info (not phone) ---
+        "What is the reference number for this case? I want to write it down before I do anything.",
+        "What department are you from again? I want to tell my son when he comes home.",
+        "Can you tell me your employee ID? I want to note it for my records.",
+        "What is the case number? I want to have proof of this conversation.",
+        # --- family consult / stalling ---
+        "Hold on, let me ask my neighbour. She works in a bank, she'll know about this.",
+        "Wait, my son is calling on the other phone. He might have got the OTP. One minute.",
+        "Let me check WhatsApp also. Sometimes these codes come there instead.",
+        # --- asks phone (limited — only a few) ---
+        "My OTP is not coming. Network is weak here. What number should I expect the SMS from?",
+        "One thing — if the call drops, what number should I call you back on? Just in case.",
     ]
 
     ACCOUNT_RESPONSES: List[str] = [
-        "Account number? Which one — savings or fixed deposit? And tell me your contact number first.",
-        "My account number is very long. But first, give me your employee ID and phone number.",
-        "Is it the number on the back of the card? Let me check. What is your official phone number?",
-        "Let me open my net banking app… Meanwhile, what is your callback number and employee ID?",
-        "I don't remember the full number. Give me your contact details first so I can verify.",
-        "Debit card number or account number? Both are different, right? What is your official email?",
-        "Let me call my son first. But give me your phone number and reference ID to show him.",
-        "My passbook shows two numbers. Which one you need? Also give me your contact information.",
-        "I can see it partially… it starts with 3… But what is your phone number and department?",
-        "Account number I can give but first tell me — what is your official contact and employee ID?",
+        # --- confused ---
+        "Account number? Which one — savings or fixed deposit? I have both.",
+        "Is it the number on the front of the passbook or the one on the cheque? They are different.",
+        "My passbook shows two numbers. One is long and one is short. Which one?",
+        "Debit card number or account number? Both are different, right?",
+        # --- stalling ---
+        "Let me open my net banking app… it takes time to load on my old phone.",
+        "I don't remember the full number. Let me go find my passbook, it's in the cupboard.",
+        "Wait, my passbook is in the locker. I need to find the key first.",
+        "My son has the chequebook. He took it last week. Let me message him.",
+        # --- asks for different info ---
+        "I can give you the account number. But first, what is the reference ID for this case?",
+        "Which bank branch are you calling from? I want to verify before sharing anything.",
+        "What is your employee ID? My branch said I should always verify before sharing account details.",
+        "Can you send me an email with the official request? I need it in writing.",
+        # --- partial compliance (keeps scammer engaged) ---
+        "It starts with 3… no wait, that's my other account. Hold on.",
+        "Let me read it slowly — one, two… wait, I can't read the next digit clearly.",
+        # --- emotional ---
+        "I'm worried. What if someone misuses my account number? Can you guarantee safety?",
+        "My neighbour gave her account number to someone and lost all her money. I'm scared.",
     ]
 
     THREAT_RESPONSES: List[str] = [
-        "Please don't involve police! I'll cooperate. Tell me what to do and give me your contact number.",
-        "Oh no, I didn't know this was serious. What is your name, phone number, and case reference?",
-        "I don't want legal trouble. I'm a retired person. Give me your official contact and badge number.",
-        "You're scaring me. Is there really a case? Give me the case number and your phone number.",
-        "I am a senior citizen. Please be patient. What is your supervisor's phone number and email?",
-        "I'll do whatever you say. Please don't file any case. What is the amount and your UPI ID?",
-        "Please sir, I have health issues. Tell me your contact number and the solution quickly.",
-        "I am shaking with fear. Tell me the amount, where to send, and your contact details.",
-        "I will cooperate fully. Give me your phone number, case reference, and payment details.",
-        "Arrest? Sir, I have never done anything wrong! What is your badge number and department phone?",
+        "Please don't involve police! I'll cooperate. Just tell me what to do.",
+        "Oh no, I didn't know this was serious. What is the case reference number?",
+        "I don't want legal trouble. I'm a retired person. Please explain what happened.",
+        "You're scaring me. Is there really a case against me? What is the allegation?",
+        "I am a senior citizen. Please be patient with me. Can you explain once more?",
+        "I'll do whatever you say. Please don't file any case. What do I need to do?",
+        "Please sir, I have health issues. My blood pressure just shoots up with stress.",
+        "I am shaking with fear. Let me sit down first. My hands are trembling.",
+        "Arrest? Sir, I have never done anything wrong in my life! This must be a mistake.",
+        "I will cooperate fully. But please, let me speak to my family once before anything.",
+        "Sir, please don't shout at me. I am an old person. Let me understand first.",
+        "Is there any way to resolve this peacefully? I can't go through a legal process at my age.",
+        "My son is a lawyer. Wait, let me just inform him. He should know about this.",
+        "What is the exact allegation? I haven't done anything illegal. There must be some confusion.",
     ]
 
     PAYMENT_LURE_RESPONSES: List[str] = [
@@ -160,36 +201,42 @@ class EngagementController:
         "Send me an official email about this. Then I'll proceed.",
     ]
 
-    # Account compromise/blocking/KYC responses - contextual to urgent bank messages (enhanced probing)
+    # Account compromise/blocking/KYC responses (diverse themes)
     ACCOUNT_COMPROMISE_RESPONSES: List[str] = [
-        "Oh no! My account is compromised? What happened exactly? Give me your employee ID and phone number.",
-        "Blocked? But I haven't done anything wrong! Please explain and give me your contact details.",
-        "Wait, which account are you talking about? I have multiple banks. What is your official number?",
-        "How did this happen? I check my account regularly! What is your name and callback number?",
-        "Please don't block my account! What do I need to do? Give me the reference number and your phone.",
-        "This is very worrying. Can you tell me what suspicious activity you found? And your contact details?",
-        "KYC update? But I updated it just last year. Are you sure? What is your department phone number?",
-        "I'm very concerned now. Let me get my documents. What exactly do you need and your contact?",
-        "My money is safe, right? Please tell me nothing has been withdrawn! What is your official email?",
-        "Wait, let me check my bank app... What should I look for? And give me your employee details.",
-        "2 hours only? That's not much time! What details do you need from me? And your phone number?",
-        "But I just used my card yesterday and it was working fine! What is your name and contact number?",
-        "Is this about my SBI account or the other one? I'm confused. Give me your callback number.",
-        "Let me call my branch also. What is the reference number for this issue and your phone number?",
+        "Oh no! My account is compromised? What happened exactly? Please explain.",
+        "Blocked? But I haven't done anything wrong! What is the reason?",
+        "Wait, which account are you talking about? I have multiple banks.",
+        "How did this happen? I check my account regularly! This is very strange.",
+        "Please don't block my account! I'll do whatever is needed. Just guide me.",
+        "This is very worrying. Can you tell me what suspicious activity you found?",
+        "KYC update? But I updated it just last year at the branch. Are you sure?",
+        "I'm very concerned now. Let me get my documents. What exactly do you need?",
+        "My money is safe, right? Please tell me nothing has been withdrawn!",
+        "Wait, let me check my bank app… it's loading… my phone is very slow.",
+        "2 hours only? That's not much time! My son handles all bank things, let me call him.",
+        "But I just used my card yesterday and it was working fine! What changed?",
+        "Is this about my SBI account or the other one? I'm confused.",
+        "Let me call my branch also. What is the reference number for this issue?",
+        "What is your employee ID? My branch manager said always verify the caller.",
+        "Can you send me an SMS from the bank's official number? Then I'll believe you.",
     ]
 
-    # Courier/parcel scam responses (enhanced with probing questions)
+    # Courier/parcel scam responses (diverse themes)
     COURIER_RESPONSES: List[str] = [
-        "Parcel? But I haven't ordered anything recently. What parcel? Give me the tracking number.",
-        "Which courier company? I don't remember any pending deliveries. What is your phone number?",
-        "Customs? But I didn't order anything from abroad! What is the parcel tracking ID and your contact?",
-        "This must be a mistake. Can you check the tracking number again? And give me your office number.",
-        "Drugs? Sir, I am a respectable person! This is some mix-up! What is the sender's name and number?",
-        "Maybe someone used my address by mistake? What is in the parcel? Give me the tracking details.",
-        "I need to understand this. Who sent this parcel to me? What is the sender's contact information?",
-        "Can you tell me the sender's name and phone number? Maybe then I'll remember. What's the tracking ID?",
-        "This is very shocking! I don't know anything about illegal items! Give me your supervisor's number.",
-        "Please verify the address once more. I never ordered any such thing. What is your contact number?",
+        "Parcel? But I haven't ordered anything recently. What parcel?",
+        "Which courier company is this? I don't remember any pending deliveries.",
+        "Customs? But I didn't order anything from abroad! There must be some mix-up.",
+        "This must be a mistake. Can you check the tracking number again?",
+        "Drugs? Sir, I am a respectable person! This is definitely a mix-up!",
+        "Maybe someone used my address by mistake? What is in the parcel exactly?",
+        "I need to understand this. Who sent this parcel to me? What is the sender's name?",
+        "What is the tracking number? Let me note it down and check with the courier office.",
+        "This is very shocking! I need to sit down. My blood pressure is rising.",
+        "Let me first tell my son about this. He handles all courier deliveries.",
+        "Can you send me the tracking details by SMS? I want to verify with the courier company.",
+        "What is the exact weight and contents listed on the parcel? I want to understand.",
+        "I'm very scared now. Please don't involve police until we clear this up.",
+        "What is your badge number? I want to note it before we proceed.",
     ]
 
     TECH_CONFUSION: List[str] = [
@@ -205,60 +252,68 @@ class EngagementController:
         "Sir, the screen went black. I think my phone switched off. One second.",
     ]
 
-    # Tech support scam responses — confused elderly persona dealing with "hacked computer"
+    # Tech support scam responses (diverse themes)
     TECH_SUPPORT_RESPONSES: List[str] = [
-        "My computer is hacked? Oh no! But what is a virus exactly? Tell me your contact number.",
-        "AnyDesk? What is that? I don't know how to download. Can you give me your phone number to guide me?",
-        "Screen sharing? My grandson does that. What app should I download? And what is your phone number?",
-        "I'm very scared now. Is my data safe? What is your employee ID and contact number?",
-        "Remote access? I don't understand these technical things. Give me your official number.",
-        "Wait, my computer is very slow. Let me restart it. Meanwhile give me your callback number.",
-        "Microsoft called me? But I use a very old computer. What is your name and official phone number?",
-        "I see a warning on screen. What does it say? Can you give me your customer care number?",
-        "How do I know you are really from the company? Share your employee ID and direct phone number.",
-        "My son handles the computer usually. Give me your phone number, I'll have him call you.",
+        "My computer is hacked? Oh no! But what is a virus exactly?",
+        "AnyDesk? What is that? I don't know how to download things.",
+        "Screen sharing? My grandson does that sometimes. I don't know how.",
+        "I'm very scared now. Is my data safe? What exactly happened?",
+        "Remote access? I don't understand these technical things at all.",
+        "Wait, my computer is very slow. Let me restart it first.",
+        "Microsoft called me? But I use a very old computer. Is this real?",
+        "I see a warning on screen. What does it mean? I can't read it properly.",
+        "How do I know you are really from the company? What is your employee ID?",
+        "My son handles the computer usually. Let me message him first.",
+        "The computer screen went black! What happened? Did I break something?",
+        "I have a very old laptop. Windows 7 I think. Does this virus affect old ones too?",
     ]
 
-    # Job fraud responses — interested but cautious job seeker  
+    # Job fraud responses (diverse themes)
     JOB_FRAUD_RESPONSES: List[str] = [
-        "Work from home? That sounds interesting! What company is this? Give me the official website and contact.",
-        "How much can I earn? And what exactly is the work? Who is your company and phone number?",
-        "Training fee? But don't companies usually pay for training? What is the registration contact number?",
+        "Work from home? That sounds interesting! What company is this?",
+        "How much can I earn? And what exactly is the work involved?",
+        "Training fee? But don't companies usually pay for training?",
         "This sounds too good to be true. Can you send me an official email with the job details?",
-        "My friend got cheated in a similar offer. How do I verify this is real? Share your company phone.",
-        "Daily earnings? That's very tempting. But what is the company name and official contact number?",
-        "Telegram group for work? I'm not very active on Telegram. Give me a phone number instead.",
-        "Is there a joining fee? Real companies don't charge, right? What is your supervisor's number?",
-        "Let me discuss with my family first. What is your WhatsApp number and company website?",
-        "Product reviews? How does that work? Share the company details and your official contact.",
+        "My friend got cheated in a similar offer. How do I verify this is real?",
+        "Daily earnings? That's very tempting. But what is the company registration number?",
+        "Telegram group for work? I'm not on Telegram. Is there a website I can check?",
+        "Is there a joining fee? Real companies don't charge, right?",
+        "Let me discuss with my family first. They always advise me on these things.",
+        "Product reviews? How does that work exactly? I've never done this before.",
+        "Can you send me the offer letter by email? I want something official in writing.",
+        "What is the company's GST number? My son said always check before joining.",
     ]
 
-    # Investment scam responses — interested but cautious investor
+    # Investment scam responses (diverse themes)
     INVESTMENT_RESPONSES: List[str] = [
-        "Guaranteed returns? That sounds great! But how do I verify this? Give me your company details.",
-        "Double my money? Which company is this? Give me the SEBI registration number and your phone.",
-        "I'm interested but my son says to be careful. What is your official website and contact number?",
-        "How much minimum investment? And where do I transfer? Share the account details and your number.",
-        "Crypto trading? I've heard of Bitcoin. But is it safe? What is your official phone number?",
-        "Monthly income? That would really help. Share the company name, registration, and your phone number.",
-        "My neighbor invested somewhere and lost money. How is this different? Give me your contact.",
-        "Risk-free? Nothing is risk-free. Can you send me documentation? What is your email and phone?",
-        "Which platform is this on? Is it registered with SEBI? Give me verifiable details and your number.",
-        "I have some savings I could invest. But first give me your full name and official contact details.",
+        "Guaranteed returns? That sounds great! But how do I verify this is legitimate?",
+        "Double my money? Which company is this? What is the SEBI registration number?",
+        "I'm interested but my son says to be careful. Let me show him first.",
+        "How much is the minimum investment? And what is the lock-in period?",
+        "Crypto trading? I've heard of Bitcoin. But is it safe for senior citizens?",
+        "Monthly income? That would really help my pension. Tell me more about the scheme.",
+        "My neighbour invested somewhere and lost everything. How is this different?",
+        "Risk-free? Nothing is risk-free. Can you send me documentation by email?",
+        "Which platform is this on? Is it registered with SEBI?",
+        "I have some savings I could invest. What happens if I want to withdraw early?",
+        "Can you share past performance reports? I want to study them before deciding.",
+        "My chartered accountant handles my investments. Can I share this with him first?",
     ]
 
-    # Identity theft responses — confused but slowly complying
+    # Identity theft responses (diverse themes)
     IDENTITY_RESPONSES: List[str] = [
-        "Aadhaar number? But isn't it supposed to be kept private? Why do you need it? Give me your contact.",
-        "PAN card? I keep it in the locker. Let me find it. Meanwhile tell me your phone number.",
-        "Why do you need my date of birth? That's personal information. What is your employee ID?",
-        "My son told me never to share these details. Give me your supervisor's number first.",
-        "ID proof? Which one do you need? I have voter card also. What is your official phone number?",
-        "Selfie with Aadhaar? That sounds suspicious. Give me your official email and contact number first.",
-        "Wait, let me get my reading glasses to find the documents. What is your callback number?",
-        "I'm worried about sharing identity details on phone. Can you send a written request by email?",
-        "My Aadhaar card is laminated and hard to read. Give me your contact, I'll call back with details.",
-        "Passport number? I don't have it memorized. Share your department details and phone number.",
+        "Aadhaar number? But isn't it supposed to be kept private? Why do you need it?",
+        "PAN card? I keep it in the locker. Let me find it. Give me a few minutes.",
+        "Why do you need my date of birth? That's personal information.",
+        "My son told me never to share these details on phone. Can you send a written request?",
+        "ID proof? Which one do you need? I have voter card, Aadhaar, and PAN.",
+        "Selfie with Aadhaar? That sounds suspicious. My bank never asks for this.",
+        "Wait, let me get my reading glasses to find the documents.",
+        "I'm worried about sharing identity details on phone. Can you send an official email?",
+        "My Aadhaar card is laminated and the number is hard to read. Let me try.",
+        "Passport number? I don't have it memorized. Let me check the drawer.",
+        "What is your employee ID? I need to verify before sharing any personal details.",
+        "Can I visit the branch instead? I'd rather share documents in person.",
     ]
 
     STALLING: List[str] = [
@@ -274,21 +329,46 @@ class EngagementController:
         "Sorry, I didn't hear that clearly. Can you repeat everything once more?",
     ]
 
-    # Continuation prompts — used when scam detected early to extract more intel (enhanced)
+    # Continuation prompts — diverse probing (not all asking for phone)
     CONTINUATION_PROMPTS: List[str] = [
-        "Can you give me a callback number and your full name in case we get disconnected?",
-        "What is your official department ID, phone number, and email? I want to note it for my records.",
-        "Can you share the UPI ID, account details, and your phone number for the refund verification?",
-        "The link didn't open. Can you resend it and tell me the website name and your contact number?",
-        "What is the case reference number, your employee ID, and phone number? I need it for my notes.",
-        "Which branch or office are you calling from? Give me the address and landline number.",
-        "Sorry, my network dropped for a moment. Share your phone number and the payment details again.",
-        "One minute, I'm checking documents. Meanwhile, give me your official email and contact number.",
-        "My phone just restarted. Tell me again from the beginning with your name and phone number.",
-        "Before I proceed, give me an email address for written proof and your direct phone number.",
-        "What number should I call back if this call drops? And what is your employee ID?",
-        "I want to note down your details. What is your full name, contact number, and department?",
+        "Can you give me your full name in case we get disconnected?",
+        "What is your official department ID? I want to note it for my records.",
+        "Can you share the reference number for this case? I need it for documentation.",
+        "The link you sent didn't open. Can you tell me the website name?",
+        "What is the case reference number? I want to write it in my diary.",
+        "Which branch or office are you calling from? I want to know the address.",
+        "Sorry, my network is unstable. Can you repeat the main points slowly?",
+        "One minute, I'm checking my documents. Please hold.",
+        "My phone just restarted. Can you tell me again what I need to do?",
+        "Before I proceed, can you send me an email with all the details? I need written proof.",
+        "What number should I call back if this call drops?",
+        "I want to note down everything. What is your full name and department?",
+        "How long will this whole process take? I have a doctor's appointment later.",
+        "Is there a complaint number I can use to track this?",
     ]
+
+    # Response theme tags — used to prevent consecutive same-theme responses
+    # Each response is tagged by what it primarily ASKS FOR or DOES
+    _THEME_ASKS_PHONE = frozenset([
+        "phone number", "contact number", "callback number", "contact details",
+        "official contact", "your number", "call you back", "phone no",
+        "your phone", "callback", "phone first", "direct phone",
+        "official number", "landline", "whatsapp number",
+    ])
+    _THEME_ASKS_ACCOUNT = frozenset([
+        "account number", "account details", "bank account", "ifsc",
+        "beneficiary", "upi id", "account holder",
+    ])
+    _THEME_ASKS_ID = frozenset([
+        "employee id", "badge number", "reference number", "case number",
+        "department id", "reference id", "complaint number", "case reference",
+        "employee details",
+    ])
+    _THEME_STALLS = frozenset([
+        "hold on", "one minute", "wait", "let me", "my phone",
+        "battery", "restart", "charger", "one second", "door",
+        "medicine", "reading glasses", "network", "slow",
+    ])
 
     def __init__(self) -> None:
         self._contexts: Dict[str, dict] = {}
@@ -321,7 +401,6 @@ class EngagementController:
         ctx = self._get_context(session_id)
 
         # Detect tactics from CURRENT message only for response selection
-        # This ensures responses match what the scammer is asking for RIGHT NOW
         current_tactics = self._detect_tactics(message)
 
         # Supplement keyword tactics with neural intent classification
@@ -329,28 +408,41 @@ class EngagementController:
             session_id, message, current_tactics
         )
 
-        # Store accumulated tactics for final analysis/reporting (separate concern)
+        # Track consecutive same-tactic turns for pool blending
         ctx["tactics"].update(current_tactics)
+        primary_tactic = self._primary_tactic(current_tactics)
+        tactic_streak = self._update_tactic_streak(ctx, primary_tactic)
 
-        # Compute engagement stage based on risk progression and message count
+        # Compute engagement stage
         stage = self._compute_stage(risk_score, msg_count, is_scam)
         ctx["stage"] = stage
 
-        # Select response pool based on CURRENT tactics and engagement stage
-        # This ensures contextually appropriate responses
+        # Select response pool + blend in variety for prolonged same-tactic turns
         pool = self._select_pool(ctx, current_tactics, stage, msg_count, is_scam)
 
-        # Occasionally use continuation prompts in later stages to maintain engagement
-        # These are generic probing questions that keep the scammer talking
-        if (is_scam and stage >= 4 and msg_count >= 4 and 
-            len(current_tactics) == 0 and random.random() < 0.3):
+        # After 3+ same-tactic turns, blend in stalling/confusion/stage pools
+        if tactic_streak >= 3 and is_scam:
+            pool = self._blend_variety(pool, stage)
+
+        # Occasionally use continuation prompts in later stages
+        if (is_scam and stage >= 4 and msg_count >= 4
+                and len(current_tactics) == 0 and random.random() < 0.3):
             pool = self.CONTINUATION_PROMPTS
+
+        # Filter out responses asking for already-obtained intel
+        intel = ctx.get("extracted_intel", {})
+        if intel:
+            pool = self._filter_redundant_asks(pool, intel, ctx)
+
+        # Filter by theme diversity — avoid same theme as last response
+        pool = self._filter_by_theme_diversity(pool, ctx)
 
         # ML-optimised response selection (falls back to random if ML unavailable)
         response = self._ml_select_or_fallback(
             session_id, message, pool, ctx, stage, risk_score, is_scam,
         )
         ctx["history"].append(response)
+        ctx["last_theme"] = self._classify_theme(response)
         return response
 
     def get_stage(self, session_id: str) -> int:
@@ -420,8 +512,17 @@ class EngagementController:
                     "history": [],
                     "tactics": set(),
                     "used": set(),
+                    "last_theme": None,
+                    "tactic_streak": 0,
+                    "last_tactic": None,
+                    "extracted_intel": {},
                 }
             return self._contexts[session_id]
+
+    def set_extracted_intel(self, session_id: str, intel: dict) -> None:
+        """Inject the current extracted intelligence into the engagement context."""
+        ctx = self._get_context(session_id)
+        ctx["extracted_intel"] = intel or {}
 
     @staticmethod
     def _compute_stage(
@@ -613,6 +714,107 @@ class EngagementController:
 
         except Exception:
             return keyword_tactics
+
+    # ── Anti-repetition helpers ──────────────────────────────────────
+
+    @staticmethod
+    def _primary_tactic(tactics: Set[str]) -> str:
+        """Return the single highest-priority tactic, or '' if none."""
+        priority = [
+            "otp_request", "account_request", "credential",
+            "courier", "tech_support", "job_fraud", "investment",
+            "identity_theft", "threat", "digital_arrest",
+            "payment_lure", "payment_request", "verification", "urgency",
+        ]
+        for p in priority:
+            if p in tactics:
+                return p
+        return ""
+
+    @staticmethod
+    def _update_tactic_streak(ctx: dict, tactic: str) -> int:
+        """Increment or reset the consecutive-same-tactic counter."""
+        if tactic and tactic == ctx.get("last_tactic"):
+            ctx["tactic_streak"] = ctx.get("tactic_streak", 0) + 1
+        else:
+            ctx["tactic_streak"] = 1
+        ctx["last_tactic"] = tactic
+        return ctx["tactic_streak"]
+
+    def _blend_variety(self, pool: list, stage: int) -> list:
+        """After 3+ same-tactic turns, blend stalling/confusion into pool."""
+        extras: list = []
+        extras.extend(self.STALLING)
+        extras.extend(self.TECH_CONFUSION)
+        if stage >= 3:
+            extras.extend(self.CONTINUATION_PROMPTS)
+        # 60% original pool, 40% variety pool
+        combined = list(pool) + extras
+        return combined
+
+    def _classify_theme(self, response: str) -> str:
+        """Classify a response into a theme label for diversity tracking."""
+        low = response.lower()
+        for phrase in self._THEME_ASKS_PHONE:
+            if phrase in low:
+                return "asks_phone"
+        for phrase in self._THEME_ASKS_ACCOUNT:
+            if phrase in low:
+                return "asks_account"
+        for phrase in self._THEME_ASKS_ID:
+            if phrase in low:
+                return "asks_id"
+        for phrase in self._THEME_STALLS:
+            if phrase in low:
+                return "stalls"
+        return "general"
+
+    def _filter_by_theme_diversity(self, pool: list, ctx: dict) -> list:
+        """Remove responses whose theme matches the last response's theme."""
+        last_theme = ctx.get("last_theme")
+        if not last_theme or last_theme == "general":
+            return pool
+        diverse = [r for r in pool if self._classify_theme(r) != last_theme]
+        # Always keep at least some candidates
+        return diverse if len(diverse) >= 3 else pool
+
+    def _filter_redundant_asks(
+        self, pool: list, intel: dict, ctx: dict,
+    ) -> list:
+        """Filter out responses that ask for information already obtained.
+
+        If the scammer already gave us phone numbers, drop responses that
+        primarily ask for phone/contact.  Same for bank accounts, etc.
+        """
+        drop_phrases: list = []
+        if intel.get("phoneNumbers"):
+            drop_phrases.extend([
+                "phone number", "contact number", "callback number",
+                "contact details", "your number", "official contact",
+                "phone no", "your phone", "direct phone",
+            ])
+        if intel.get("bankAccounts"):
+            drop_phrases.extend([
+                "account number", "account details", "bank account",
+                "beneficiary", "ifsc",
+            ])
+        if intel.get("upiIds"):
+            drop_phrases.extend(["upi id", "upi details"])
+        if intel.get("emailAddresses"):
+            drop_phrases.extend(["email id", "email address", "official email"])
+
+        if not drop_phrases:
+            return pool
+
+        def _is_redundant(resp: str) -> bool:
+            low = resp.lower()
+            hits = sum(1 for p in drop_phrases if p in low)
+            # Only drop if these phrases dominate the response (ending ask)
+            return hits >= 1
+
+        filtered = [r for r in pool if not _is_redundant(r)]
+        # Never leave the pool completely empty
+        return filtered if len(filtered) >= 3 else pool
 
     def _pick_non_repeat(self, pool: list, ctx: dict) -> str:
         """Pick an unused response from the pool. Resets if all used."""

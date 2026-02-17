@@ -154,6 +154,8 @@ async def process_message(
         # 6. Generate contextually appropriate victim-persona reply
         try:
             scam_confirmed = memory.is_scam_confirmed(session_id)
+            # Inject extracted intel so the engagement engine avoids redundant asks
+            engagement_controller.set_extracted_intel(session_id, intel)
             reply = engagement_controller.get_reply(
                 session_id=session_id,
                 message=current_text,
