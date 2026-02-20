@@ -280,4 +280,4 @@ async def process_message(
         # Always return success to evaluator with generic response
         return HoneypotResponse(
             status="success",
-            reply="Sorry, could you explain that again?",
+            reply="Sorry, could you explain that again?",        )
