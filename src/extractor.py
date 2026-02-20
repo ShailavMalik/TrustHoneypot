@@ -238,6 +238,9 @@ class IntelligenceStore:
         r'\b(ITR[-][A-Z0-9\-]{4,15})\b',     # ITR-2025-xxx (fake tax case)
         r'\b(DRI[-][A-Z0-9\-]{4,20})\b',     # DRI customs case
         r'\b[A-Z]{2,5}[-]\d{4}[-][A-Z0-9\-]{3,15}\b',  # Generic XX-YYYY-XXXXX pattern
+        # Broad multi-segment IDs: DXB-VISA-2025-4567, GAS-DIS-2025-7890, EPF-BONUS-2025-3456
+        # Also handles PMKISAN-2025-REF-5678 (second segment can be digits)
+        r'\b([A-Z]{2,10}[-][A-Z0-9]{2,12}[-][A-Z0-9\-]{4,25})\b',
     ]
 
     # ================================================================
@@ -251,6 +254,7 @@ class IntelligenceStore:
         r'\b(?:P|INS|POL)[-][A-Z0-9\-]{4,20}\b',    # e.g. POL-2023-98765, INS-4567
         r'\b(?:P|INS|POL)[-]?\d{4,10}(?![-]\d)\b',    # e.g. P-78945, INS4567 (no partial match)
         r'\bPOLICY[-]?[A-Z0-9]{4,12}\b',
+        r'\b(?:LIC[-][A-Z]{2,5}[-]\d{4}[-][A-Z0-9\-]{4,12})\b',  # LIC-POL-2015-987654
     ]
 
     # ================================================================
@@ -266,11 +270,12 @@ class IntelligenceStore:
         r'(?:shipment\s*id|parcel\s*id|courier\s*(?:id|ref))'
         r'[:\s#\-\.]+([A-Z0-9\-]{4,18})\b',
         # E-commerce order formats (added for better extraction)
-        r'\b(ORD[-][A-Z]{2,4}[-][A-Z0-9]{6,15})\b',  # ORD-AMZ-789456123, ORD-FLK-xxx
+        r'\b(ORD[-][A-Z]{2,4}[-][A-Z0-9\-]{4,20})\b',  # ORD-AMZ-789456123, ORD-ZOM-2025-123456
         r'\b(AMZ[-][A-Z0-9\-]{6,20})\b',             # AMZ-xxx-xxx (Amazon)
         r'\b(FLK[-][A-Z0-9\-]{6,20})\b',             # FLK-xxx (Flipkart)
         r'\b(SHIP[-][A-Z0-9\-]{4,15})\b',            # SHIP-xxx shipment ID
         r'(?i)order\s+([A-Z0-9\-]{8,25})\b',         # Generic "order XXXXX" capture
+        r'\b([A-Z]{2,5}[-][A-Z]{2,5}[-]\d{4}[-]\d{4,12})\b',  # SWG-REF-2025-987654, MYN-ORD-2025-456789
     ]
 
     # ================================================================
@@ -505,7 +510,7 @@ class IntelligenceStore:
     def _extract_case_ids(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Extract fake case/reference IDs from scam messages."""
         # Prefixes that belong to policy numbers, not case IDs
-        _POLICY_PREFIXES = ('POL-', 'INS-', 'POLICY-', 'P-')
+        _POLICY_PREFIXES = ('POL-', 'INS-', 'POLICY-', 'P-', 'LIC-')
         for pattern in self.CASE_ID_PATTERNS:
             for match in re.findall(pattern, text, re.IGNORECASE):
                 raw = (match if isinstance(match, str) else match[0]).strip()

@@ -220,6 +220,38 @@ class RiskAccumulator:
         (r'[a-z0-9\-]*(?:secure|verify|account|update|login|claim)[a-z0-9\-]*\.(?:in|com|org|net)/[^\s]*', 16),
     ]
 
+    # ================================================================
+    # CREDENTIAL HARVEST / SOCIAL-ENGINEERING LAYER
+    # Catches soft-phishing: fake blue-tick, premium upgrades, credential
+    # entry requests, app-install scams, social-media account fraud.
+    # ================================================================
+    CREDENTIAL_HARVEST_PATTERNS = [
+        # Credential / login detail requests
+        (r'\b(?:login|log[\s\-]?in)\s*(?:credentials?|details?|info)\b',       18),
+        (r'\b(?:enter|input|fill|submit|share|provide)\s*(?:your\s*)?(?:login|username|password|credentials?)\b', 20),
+        (r'\b(?:username|user[\s\-]?id|email\s*(?:and|&)\s*password)\b',       16),
+        (r'\b(?:verify|confirm)\s*(?:your\s*)?(?:account|identity|email|mobile)\s*(?:by\s*entering|via|through|at)\b', 16),
+        (r'\b(?:enter|provide|fill)\s*(?:your\s*)?(?:details|information|data)\s*(?:on|at|in)\s*(?:the\s*)?(?:link|form|portal|site|page)\b', 16),
+        # Blue-tick / badge / verification scams (Instagram, Twitter, etc.)
+        (r'\b(?:blue[\s\-]?tick|verified[\s\-]?badge|verification[\s\-]?badge|blue\s*check)\b', 18),
+        (r'\b(?:get\s*verified|account\s*verified|verified\s*account|official\s*badge)\b', 16),
+        (r'\b(?:instagram|facebook|twitter|youtube|telegram)\s*(?:verification|verified|premium|official|tick)\b', 16),
+        (r'\b(?:social\s*media\s*(?:verification|account)|verify\s*your\s*(?:instagram|facebook|twitter|youtube))\b', 16),
+        # App install / APK / non-official source downloads
+        (r'\b(?:download|install|update)\s*(?:now|this|the|our|here|immediately|quickly|from|apk|app)\b', 14),
+        (r'\b(?:apk|\.apk|sideload|enable\s*(?:unknown|third[\s\-]?party)\s*sources?)\b', 18),
+        (r'\b(?:install(?:ed)?\s*(?:the\s*)?(?:app|apk|application|software))\b', 16),
+        (r'\b(?:download\s*(?:the\s*)?(?:app|application|apk|file|setup))\b',  16),
+        # Premium / exclusive upgrade lures
+        (r'\b(?:premium\s*(?:version|features?|access|account|membership|plan|upgrade))\b', 14),
+        (r'\b(?:upgrade\s*(?:to|your|now|account|plan|version)|account\s*upgrade)\b', 14),
+        (r'\b(?:exclusive\s*(?:access|feature|version|member|club|invite))\b', 12),
+        (r'\b(?:pre[\s\-]?approved|specially[\s\-]?selected|exclusively?\s*for\s*you)\b', 14),
+        (r'\b(?:gold|platinum|vip|elite)\s*(?:version|member|plan|access|feature|account)\b', 12),
+        # Screen-share / remote-access social engineering
+        (r'\b(?:share\s*(?:your\s*)?(?:screen|display)|allow\s*(?:screen|remote)\s*(?:access|sharing|control))\b', 18),
+    ]
+
     EMOTIONAL_PATTERNS = [
         (r'\b(scared|afraid|worried|danger(?:ous)?|risk|destroy|ruin)\b',      10),
         (r'\b(?:your\s*(?:family|children|parents?|wife|husband|reputation|career|future))\b', 12),
@@ -437,6 +469,7 @@ class RiskAccumulator:
             ("suspicious_url",         self.URL_PATTERNS),
             ("emotional_pressure",     self.EMOTIONAL_PATTERNS),
             ("legal_threat",           self.LEGAL_THREAT_PATTERNS),
+            ("credential_harvest",     self.CREDENTIAL_HARVEST_PATTERNS),
         ]
         # 8 auxiliary signal layers for specific scam types
         auxiliary_layers = [
