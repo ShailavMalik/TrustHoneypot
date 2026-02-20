@@ -59,6 +59,12 @@ class ExtractedIntelligence(BaseModel):
     upiIds: List[str] = Field(default_factory=list)
     phishingLinks: List[str] = Field(default_factory=list)
     emailAddresses: List[str] = Field(default_factory=list)
+    caseIds: List[str] = Field(default_factory=list)
+    policyNumbers: List[str] = Field(default_factory=list)
+    orderNumbers: List[str] = Field(default_factory=list)
+    caseIds: List[str] = Field(default_factory=list)
+    policyNumbers: List[str] = Field(default_factory=list)
+    orderNumbers: List[str] = Field(default_factory=list)
 
 
 class EngagementMetrics(BaseModel):
@@ -79,8 +85,11 @@ class FinalOutput(BaseModel):
     """
 
     sessionId: str
+    confidenceLevel: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     scamDetected: bool = False
+    scamType: str = "unknown"
     totalMessagesExchanged: int = 0
+    confidenceLevel: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     extractedIntelligence: ExtractedIntelligence = Field(default_factory=ExtractedIntelligence)
     engagementMetrics: EngagementMetrics = Field(default_factory=EngagementMetrics)
     agentNotes: str = ""

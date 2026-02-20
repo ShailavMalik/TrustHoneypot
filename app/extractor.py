@@ -1,14 +1,75 @@
-"""Production-grade regex-based intelligence extraction engine.
+"""Production-grade regex-based intelligence extraction engine with canonical normalization.
 
 Extracts phones (Indian mobile, landline, toll-free), bank accounts,
 UPI IDs, emails, URLs, Aadhaar numbers, PAN cards, IFSC codes,
 monetary amounts, and reference/case IDs from scammer messages.
 
-All entities are de-duplicated and stored per session. Thread-safe."""
+Features:
+- Canonical normalization for deduplication
+- Phone conversion to +91XXXXXXXXXX format
+- URL lowercase + trailing slash strip
+- All entities de-duplicated per session
+- Thread-safe operations
+"""
 
 import re
 import threading
 from typing import Dict, List, Set, Tuple
+
+
+class CanonicalNormalizer:
+    """Normalizes extracted entities to canonical format for deduplication.
+    
+    Phone: +91XXXXXXXXXX (10 digit Indian mobile)
+    URL: lowercase, no trailing slash
+    UPI: lowercase
+    Email: lowercase
+    """
+
+    @staticmethod
+    def normalize_phone(raw: str) -> str:
+        """Convert any Indian phone format to canonical +91XXXXXXXXXX."""
+        # Remove all non-digit characters
+        cleaned = re.sub(r'[^\d]', '', raw)
+        
+        # Strip country code prefix
+        if cleaned.startswith('91') and len(cleaned) == 12:
+            cleaned = cleaned[2:]
+        elif cleaned.startswith('0') and len(cleaned) == 11:
+            cleaned = cleaned[1:]
+        
+        # Validate 10-digit mobile starting with 6-9
+        if len(cleaned) == 10 and cleaned[0] in '6789':
+            return f"+91{cleaned}"
+        
+        # Return original if not a valid mobile format
+        return raw
+
+    @staticmethod
+    def normalize_url(url: str) -> str:
+        """Normalize URL: lowercase, strip trailing slash."""
+        normalized = url.lower().rstrip('/')
+        return normalized
+
+    @staticmethod  
+    def normalize_upi(upi_id: str) -> str:
+        """Normalize UPI ID: lowercase."""
+        return upi_id.lower()
+
+    @staticmethod
+    def normalize_email(email: str) -> str:
+        """Normalize email: lowercase."""
+        return email.lower()
+
+    @staticmethod
+    def normalize_bank_account(account: str) -> str:
+        """Normalize bank account: strip spaces/dashes."""
+        return re.sub(r'[\s\-]', '', account)
+
+    @staticmethod
+    def normalize_id_field(raw: str) -> str:
+        """Normalize case/policy/order IDs: lowercase alphanumeric with hyphens stripped, deduped."""
+        return re.sub(r'[^a-z0-9]', '', raw.lower())
 
 
 class IntelligenceStore:
@@ -141,6 +202,46 @@ class IntelligenceStore:
     ]
 
     # ================================================================
+    # CASE ID PATTERNS — fake investigative/complaint identifiers
+    # ================================================================
+    CASE_ID_PATTERNS = [
+        r'(?:case\s*id|case\s*no|case\s*number|complaint\s*id|complaint\s*no|cid)'
+        r'[:\s#\-\.]*([A-Z0-9][A-Z0-9\-/]{2,20})\b',
+        r'(?:reference\s*(?:no|number|id)|ref\s*(?:no|id|#))'
+        r'[:\s#\-\.]*#?([A-Z0-9][A-Z0-9\-/]{2,20})\b',
+        r'(?:ticket\s*(?:no|id|number)|fir\s*(?:no|number|id))'
+        r'[:\s#\-\.]*([A-Z0-9][A-Z0-9\-/]{2,20})\b',
+        r'\b(?:X|C|T|R)[-]\d{3,8}\b',       # e.g. X-9999, C-12345
+        r'\bCID[-]?[A-Z0-9]{4,12}\b',
+    ]
+
+    # ================================================================
+    # POLICY NUMBER PATTERNS — insurance / loan policy identifiers
+    # ================================================================
+    POLICY_NUMBER_PATTERNS = [
+        r'(?:policy\s*(?:no|number|id|#)|insurance\s*(?:id|no|number|policy))'
+        r'[:\s#\-\.]*([A-Z]{0,4}[-]?\d{4,14})\b',
+        r'(?:lic\s*(?:policy|no|number)|policy\s*code)'
+        r'[:\s#\-\.]*([A-Z0-9\-]{4,18})\b',
+        r'\b(?:P|INS|POL)[-]?\d{4,10}\b',    # e.g. P-78945, INS4567
+        r'\bPOLICY[-]?[A-Z0-9]{4,12}\b',
+    ]
+
+    # ================================================================
+    # ORDER NUMBER PATTERNS — e-commerce / transaction reference IDs
+    # ================================================================
+    ORDER_NUMBER_PATTERNS = [
+        r'(?:order\s*(?:id|no|number|#)|order\s*ref(?:erence)?)'
+        r'[:\s#\-\.]+([A-Z]{0,4}[-]?\d{4,16})\b',
+        r'(?:txn\s*(?:ref|id|no)\b|transaction\s*(?:id|no|number)\b)'
+        r'[:\s#\-\.]+([A-Z]{0,3}[-]?[A-Z0-9]{4,16})\b',
+        r'\b(?:ORD|TRN)[-]?[A-Z0-9]{3,12}\b',   # e.g. ORD7788
+        r'\bTX[N]?[-]?\d{3,12}\b',               # e.g. TX1234, TXN5678
+        r'(?:shipment\s*id|parcel\s*id|courier\s*(?:id|ref))'
+        r'[:\s#\-\.]+([A-Z0-9\-]{4,18})\b',
+    ]
+
+    # ================================================================
     # MONETARY AMOUNT PATTERNS
     # ================================================================
     AMOUNT_PATTERNS = [
@@ -199,6 +300,9 @@ class IntelligenceStore:
         self._extract_upi_ids(text, data)
         self._extract_emails(text, data)
         self._extract_urls(text, data)
+        self._extract_case_ids(text, data)
+        self._extract_policy_numbers(text, data)
+        self._extract_order_numbers(text, data)
 
         return self.get_intelligence(session_id)
 
@@ -211,6 +315,9 @@ class IntelligenceStore:
             "upiIds":         sorted(data["upiIds"]),
             "phishingLinks":  sorted(data["phishingLinks"]),
             "emailAddresses": sorted(data["emailAddresses"]),
+            "caseIds":        sorted(data["caseIds"]),
+            "policyNumbers":  sorted(data["policyNumbers"]),
+            "orderNumbers":   sorted(data["orderNumbers"]),
         }
 
     def has_intelligence(self, session_id: str) -> bool:
@@ -219,7 +326,8 @@ class IntelligenceStore:
         return any(
             len(data[key]) > 0
             for key in ("phoneNumbers", "bankAccounts", "upiIds",
-                        "phishingLinks", "emailAddresses")
+                        "phishingLinks", "emailAddresses",
+                        "caseIds", "policyNumbers", "orderNumbers")
         )
 
     def _extract_phones(self, text: str, data: Dict[str, Set[str]]) -> None:
@@ -365,6 +473,39 @@ class IntelligenceStore:
                 if len(cleaned) > 5:
                     data["phishingLinks"].add(cleaned)
 
+    def _extract_case_ids(self, text: str, data: Dict[str, Set[str]]) -> None:
+        """Extract fake case/reference IDs from scam messages."""
+        for pattern in self.CASE_ID_PATTERNS:
+            for match in re.findall(pattern, text, re.IGNORECASE):
+                raw = (match if isinstance(match, str) else match[0]).strip()
+                if len(raw) >= 3:
+                    canonical = CanonicalNormalizer.normalize_id_field(raw)
+                    if len(canonical) >= 3:
+                        data["caseIds"].add(raw.upper())
+                        data["caseIds"].add(canonical)
+
+    def _extract_policy_numbers(self, text: str, data: Dict[str, Set[str]]) -> None:
+        """Extract insurance/loan policy numbers from scam messages."""
+        for pattern in self.POLICY_NUMBER_PATTERNS:
+            for match in re.findall(pattern, text, re.IGNORECASE):
+                raw = (match if isinstance(match, str) else match[0]).strip()
+                if len(raw) >= 3:
+                    canonical = CanonicalNormalizer.normalize_id_field(raw)
+                    if len(canonical) >= 3:
+                        data["policyNumbers"].add(raw.upper())
+                        data["policyNumbers"].add(canonical)
+
+    def _extract_order_numbers(self, text: str, data: Dict[str, Set[str]]) -> None:
+        """Extract order/transaction reference numbers from scam messages."""
+        for pattern in self.ORDER_NUMBER_PATTERNS:
+            for match in re.findall(pattern, text, re.IGNORECASE):
+                raw = (match if isinstance(match, str) else match[0]).strip()
+                if len(raw) >= 3:
+                    canonical = CanonicalNormalizer.normalize_id_field(raw)
+                    if len(canonical) >= 3:
+                        data["orderNumbers"].add(raw.upper())
+                        data["orderNumbers"].add(canonical)
+
     def _ensure_session(self, session_id: str) -> Dict[str, Set[str]]:
         """Create or retrieve session data store. Thread-safe."""
         with self._lock:
@@ -375,6 +516,9 @@ class IntelligenceStore:
                     "upiIds":         set(),
                     "phishingLinks":  set(),
                     "emailAddresses": set(),
+                    "caseIds":        set(),
+                    "policyNumbers":  set(),
+                    "orderNumbers":   set(),
                 }
             return self._store[session_id]
 

@@ -41,3 +41,10 @@ dist/
 *.pdf
 self_test_eval.py
 validate_format.py
+ML_RESPONSE_EXTRACTION_TESTS.md
+
+chat_ui.html
+TECHNICAL_DOCUMENTATION.md
+test_scoring.py
+validate_format.py
+CURRENT_STATE_v2.1.md

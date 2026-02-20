@@ -183,6 +183,12 @@ class RiskAccumulator:
         (r'\b(?:anydesk|teamviewer|quicksupport|ammyy|ultraviewer)\b',         20),
         (r'\b(?:screen\s*shar(?:e|ing)|remote\s*(?:access|desktop|control))\b', 18),
         (r'\b(?:play\s*store\s*(?:link|download)|app\s*(?:store|download))\b',  8),
+        # Additional phishing/mobile-app/social-engineering patterns
+        (r'\b(?:insure|securelink|e-verification|e[\.\s]?verif)\b',            16),
+        (r'\b(?:whatsapp|telegram)\s*(?:link|url|group|channel)\b',            14),
+        (r'\b(?:mobile\s*app|apk\s*file|install\s*app)\b',                    14),
+        (r'\b(?:secure[\.\-]?link|safe[\.\-]?pay|verify[\.\-]?now|claim[\.\-]?reward)\b', 16),
+        (r'[a-z0-9\-]*(?:secure|verify|account|update|login|claim)[a-z0-9\-]*\.(?:in|com|org|net)/[^\s]*', 16),
     ]
 
     EMOTIONAL_PATTERNS = [
@@ -240,16 +246,17 @@ class RiskAccumulator:
 
     # ================================================================
     # ESCALATION BONUSES — compound signal categories = higher risk
+    # Boosted for 3+ simultaneous signals to ensure fast threshold breach
     # ================================================================
 
     ESCALATION_BONUSES: Dict[int, float] = {
         2: 10,
-        3: 22,
-        4: 35,
-        5: 50,
-        6: 60,
-        7: 70,
-        8: 80,
+        3: 28,   # boosted from 22 — 3 simultaneous signals is highly indicative
+        4: 45,   # boosted from 35
+        5: 60,   # boosted from 50
+        6: 72,   # boosted from 60
+        7: 85,   # boosted from 70
+        8: 100,  # boosted from 80
     }
 
     # ================================================================

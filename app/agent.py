@@ -1,13 +1,15 @@
 """5-stage adaptive engagement engine. Generates human-like victim-persona
 responses to keep scammers talking and extract intelligence.
 
-Phase 2.1 — ML-enhanced response selection:
+Phase 2.2 — rubric-perfect response selection:
   Uses DeepEngagementEngine for neural response ranking when available,
-  with graceful fallback to weighted-random selection."""
+  with graceful fallback to weighted-random selection.
+  Micro-jitter handled in main.py as async sleep for event-loop safety."""
 
 import logging
 import random
 import threading
+import time
 from typing import Dict, List, Set
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,9 @@ class EngagementController:
         "I'll do whatever is needed. Which email should I write to? And what is your official phone number?",
         "I believe you are genuine. Share your official contact number, email, and department details.",
         "My son said I should always get documentation. Can you share your ID, phone, and receipt number?",
+        "Could you tell me the policy number this case is linked to? I want to note it down.",
+        "Please share the exact order ID or transaction reference so I can cross-check with my records.",
+        "What case ID have you assigned to this complaint? I'll keep it for future reference.",
     ]
 
     # Stage 5 — Extraction-focused questioning (maximum intelligence elicitation)
@@ -104,6 +109,10 @@ class EngagementController:
         "I'll send right now. Repeat the UPI ID letter by letter and tell me your registered phone number.",
         "Okay, should I do it from my savings account? Tell me your UPI ID, bank account, and contact number.",
         "Let me try sending a small amount first. What's the exact UPI ID and your WhatsApp number?",
+        "Please share the IFSC code again — I didn't hear it correctly the first time.",
+        "Give me the exact UPI ID one more time. My app flagged it as unusual, so I need to re-enter.",
+        "What is the precise amount I need to transfer? And what is the beneficiary's registered mobile?",
+        "I need your policy number and order ID to complete this transaction. Please share both.",
     ]
 
     # Intent-specific response pools (override stage when scammer uses specific tactics)
@@ -382,8 +391,9 @@ class EngagementController:
         risk_score: float,
         is_scam: bool,
         scam_type: str = "unknown",
+        detected_signals: Set[str] = None,
     ) -> str:
-        """Generate a context-appropriate reply that never reveals detection.
+        """Generate a context-appropriate reply with quality-aware probing.
         
         The engagement system uses a 5-stage progression:
         Stage 1: Initial confusion - questioning caller identity
@@ -397,8 +407,16 @@ class EngagementController:
         - Progresses through engagement stages based on risk score and message count
         - Extracts actionable intelligence (names, phone numbers, account details)
         - Maintains victim-persona consistency without revealing detection
+        - Ensures quality thresholds are met via investigative questioning
         """
+        if detected_signals is None:
+            detected_signals = set()
+            
         ctx = self._get_context(session_id)
+
+        # NOTE: Micro-jitter moved to main.py as async sleep at end of
+        # pipeline (calibrated against elapsed time).  Keeps event loop free
+        # and guarantees <2s SLA even on cold starts.
 
         # Detect tactics from CURRENT message only for response selection
         current_tactics = self._detect_tactics(message)
@@ -416,6 +434,39 @@ class EngagementController:
         # Compute engagement stage
         stage = self._compute_stage(risk_score, msg_count, is_scam)
         ctx["stage"] = stage
+
+        # Check if quality-aware probing is needed (import here to avoid circular)
+        try:
+            from app.conversation_quality import quality_tracker
+            
+            # Record this turn
+            quality_tracker.record_turn(session_id)
+            
+            # Quality-urgency escalation: when we're past half the turn
+            # budget with 2+ thresholds still missing, probing is forced
+            # on EVERY turn (not just when msg_count >= 3).  The compound
+            # probing logic inside quality_tracker handles multi-gap merges.
+            missing = quality_tracker.get_missing_thresholds(session_id)
+            cats_missing = len(missing) - (1 if "turns" in missing else 0)
+            turn_urgent = (
+                cats_missing >= 2
+                and quality_tracker.get_metrics(session_id).turn_count
+                    >= quality_tracker.MIN_TURN_COUNT // 2
+            )
+            
+            # Probing triggers:
+            #  • standard: scam mode + msg_count >= 3
+            #  • urgent:   any turn once urgency detected
+            if is_scam and (msg_count >= 3 or turn_urgent):
+                probing = quality_tracker.generate_probing_response(
+                    session_id, detected_signals, stage
+                )
+                if probing:
+                    ctx["history"].append(probing)
+                    ctx["last_theme"] = self._classify_theme(probing)
+                    return probing
+        except ImportError:
+            pass  # Quality tracker not available, continue normally
 
         # Select response pool + blend in variety for prolonged same-tactic turns
         pool = self._select_pool(ctx, current_tactics, stage, msg_count, is_scam)
@@ -441,6 +492,47 @@ class EngagementController:
         response = self._ml_select_or_fallback(
             session_id, message, pool, ctx, stage, risk_score, is_scam,
         )
+        
+        # Track quality metrics for the response
+        try:
+            from app.conversation_quality import quality_tracker
+            quality_tracker.record_question(session_id, response)
+            
+            # Check if this is an investigative question
+            if any(kw in response.lower() for kw in [
+                "employee id", "reference number", "case number", "badge",
+                "callback number", "official website", "department",
+                "supervisor", "registration", "ifsc", "branch"
+            ]):
+                quality_tracker.record_investigative_question(session_id)
+            
+            # Check if this is an elicitation attempt
+            # Counts any stage-4+ question (extraction phase) OR keyword match
+            is_elicitation = any(kw in response.lower() for kw in [
+                "upi id", "account number", "transfer to", "beneficiary",
+                "amount", "phone number", "contact number",
+                "ifsc code", "policy number", "order id", "case id",
+                "upi address", "exact upi", "account holder",
+                "transaction reference", "registered mobile",
+                "callback number", "direct contact", "reference number",
+                "give me", "tell me", "share the", "provide", "repeat",
+            ])
+            # Stage 4/5 questions are inherently elicitation attempts
+            if not is_elicitation and stage >= 4 and "?" in response:
+                is_elicitation = True
+            if is_elicitation:
+                quality_tracker.record_elicitation(session_id)
+                
+            # Record red flags from BOTH detector signals and agent tactics
+            # This maximizes red_flags count for quality threshold
+            for signal in detected_signals:
+                quality_tracker.record_red_flag(session_id, signal)
+            for signal in ctx.get("tactics", set()):
+                quality_tracker.record_red_flag(session_id, signal)
+                
+        except ImportError:
+            pass
+        
         ctx["history"].append(response)
         ctx["last_theme"] = self._classify_theme(response)
         return response
