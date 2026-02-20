@@ -245,10 +245,11 @@ class IntelligenceStore:
     # ================================================================
     POLICY_NUMBER_PATTERNS = [
         r'(?:policy\s*(?:no|number|id|#)|insurance\s*(?:id|no|number|policy))'
-        r'[:\s#\-\.]*([A-Z]{0,4}[-]?\d{4,14})\b',
+        r'(?:\s*(?:is|:))?\s*[:\s#\-\.]*([A-Z]{0,5}[\-]?[A-Z0-9\-]{3,20})\b',
         r'(?:lic\s*(?:policy|no|number)|policy\s*code)'
-        r'[:\s#\-\.]*([A-Z0-9\-]{4,18})\b',
-        r'\b(?:P|INS|POL)[-]?\d{4,10}\b',    # e.g. P-78945, INS4567
+        r'(?:\s*(?:is|:))?\s*[:\s#\-\.]*([A-Z0-9\-]{4,18})\b',
+        r'\b(?:P|INS|POL)[-][A-Z0-9\-]{4,20}\b',    # e.g. POL-2023-98765, INS-4567
+        r'\b(?:P|INS|POL)[-]?\d{4,10}(?![-]\d)\b',    # e.g. P-78945, INS4567 (no partial match)
         r'\bPOLICY[-]?[A-Z0-9]{4,12}\b',
     ]
 
@@ -418,18 +419,16 @@ class IntelligenceStore:
             # Skip years (2020, 2024, etc.)
             if n == 4 and match.startswith('20'):
                 continue
-            data["bankAccounts"].add(match)
-            # Also store spaced-out format for long numbers
-            if n >= 12:
-                data["bankAccounts"].add(' '.join(match[i:i+4] for i in range(0, n, 4)))
+            # Store only canonical form (digits only, no spaces/dashes)
+            canonical = CanonicalNormalizer.normalize_bank_account(match)
+            data["bankAccounts"].add(canonical)
 
         # Strategy 2: Contextual extraction (keyword-adjacent)
         for pattern in self.CONTEXTUAL_BANK_PATTERNS:
             for match in re.findall(pattern, text, re.IGNORECASE):
                 if 6 <= len(match) <= 18:
-                    data["bankAccounts"].add(match)
-                    if len(match) >= 12:
-                        data["bankAccounts"].add(' '.join(match[i:i+4] for i in range(0, len(match), 4)))
+                    canonical = CanonicalNormalizer.normalize_bank_account(match)
+                    data["bankAccounts"].add(canonical)
 
     def _extract_upi_ids(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Match UPI IDs — known providers or short dot-free domains.
@@ -450,14 +449,13 @@ class IntelligenceStore:
             is_email_domain = any(domain_lower.startswith(ed) for ed in self._EMAIL_DOMAINS)
 
             if (is_known_provider or is_short_handle) and len(local) >= 2 and not is_email_domain:
-                data["upiIds"].add(match)               # original case
-                data["upiIds"].add(match.lower())        # lowercase
+                # Store only lowercase canonical form to avoid duplicates
+                data["upiIds"].add(match.lower())
 
         # Contextual UPI extraction
         for pattern in self.CONTEXTUAL_UPI_PATTERNS:
             for match in re.findall(pattern, text, re.IGNORECASE):
                 if '@' in match and len(match) >= 5:
-                    data["upiIds"].add(match)
                     data["upiIds"].add(match.lower())
 
     def _extract_emails(self, text: str, data: Dict[str, Set[str]]) -> None:
@@ -475,7 +473,7 @@ class IntelligenceStore:
                 continue
 
             if '.' in domain:
-                data["emailAddresses"].add(match)
+                # Store only lowercase canonical form to avoid duplicates
                 data["emailAddresses"].add(match.lower())
 
     def _extract_urls(self, text: str, data: Dict[str, Set[str]]) -> None:
@@ -491,14 +489,17 @@ class IntelligenceStore:
 
     def _extract_case_ids(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Extract fake case/reference IDs from scam messages."""
+        # Prefixes that belong to policy numbers, not case IDs
+        _POLICY_PREFIXES = ('POL-', 'INS-', 'POLICY-', 'P-')
         for pattern in self.CASE_ID_PATTERNS:
             for match in re.findall(pattern, text, re.IGNORECASE):
                 raw = (match if isinstance(match, str) else match[0]).strip()
                 if len(raw) >= 3:
-                    canonical = CanonicalNormalizer.normalize_id_field(raw)
-                    if len(canonical) >= 3:
-                        data["caseIds"].add(raw.upper())
-                        data["caseIds"].add(canonical)
+                    upper = raw.upper()
+                    # Skip IDs that look like policy numbers
+                    if any(upper.startswith(pfx) for pfx in _POLICY_PREFIXES):
+                        continue
+                    data["caseIds"].add(upper)
 
     def _extract_policy_numbers(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Extract insurance/loan policy numbers from scam messages."""
@@ -506,10 +507,8 @@ class IntelligenceStore:
             for match in re.findall(pattern, text, re.IGNORECASE):
                 raw = (match if isinstance(match, str) else match[0]).strip()
                 if len(raw) >= 3:
-                    canonical = CanonicalNormalizer.normalize_id_field(raw)
-                    if len(canonical) >= 3:
-                        data["policyNumbers"].add(raw.upper())
-                        data["policyNumbers"].add(canonical)
+                    # Store only the original format (uppercased) — no lowercase canonical
+                    data["policyNumbers"].add(raw.upper())
 
     def _extract_order_numbers(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Extract order/transaction reference numbers from scam messages."""
@@ -517,10 +516,8 @@ class IntelligenceStore:
             for match in re.findall(pattern, text, re.IGNORECASE):
                 raw = (match if isinstance(match, str) else match[0]).strip()
                 if len(raw) >= 3:
-                    canonical = CanonicalNormalizer.normalize_id_field(raw)
-                    if len(canonical) >= 3:
-                        data["orderNumbers"].add(raw.upper())
-                        data["orderNumbers"].add(canonical)
+                    # Store only the original format (uppercased) — no lowercase canonical
+                    data["orderNumbers"].add(raw.upper())
 
     def _ensure_session(self, session_id: str) -> Dict[str, Set[str]]:
         """Create or retrieve session data store. Thread-safe."""
