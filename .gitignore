@@ -50,3 +50,5 @@ CURRENT_STATE_v2.2.md
 v2.2.0_ENHANCEMENT_SUMMARY.md
 evaluate_full.py
 evaluation_report.json
+evaluate_full_v2.py
+evaluation_results_v2.json

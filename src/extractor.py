@@ -155,7 +155,7 @@ class IntelligenceStore:
     # ================================================================
     # UPI PATTERNS
     # ================================================================
-    UPI_PATTERN = r'\b[\w.\-]{2,}@[a-zA-Z][a-zA-Z0-9]{1,30}\b(?![.\-])'
+    UPI_PATTERN = r'\b[\w.\-]{2,}@[a-zA-Z][a-zA-Z0-9]{1,30}\b(?![.\-][a-zA-Z0-9])'
 
     # Contextual UPI extraction
     CONTEXTUAL_UPI_PATTERNS = [
@@ -452,10 +452,25 @@ class IntelligenceStore:
                 # Store only lowercase canonical form to avoid duplicates
                 data["upiIds"].add(match.lower())
 
-        # Contextual UPI extraction
+        # Contextual UPI extraction — apply same domain validation
         for pattern in self.CONTEXTUAL_UPI_PATTERNS:
             for match in re.findall(pattern, text, re.IGNORECASE):
-                if '@' in match and len(match) >= 5:
+                if '@' not in match or len(match) < 5:
+                    continue
+                local_c, domain_c = match.rsplit('@', 1)
+                domain_c_lower = domain_c.lower()
+                # Check if the matched UPI is actually a prefix of an email
+                # by seeing if the original text has more after the domain
+                idx = text.lower().find(match.lower())
+                if idx >= 0:
+                    after = text[idx + len(match):]
+                    # If domain continues with .[alpha] or -[alpha], it's an email/domain, skip
+                    if after and (after[0] == '.' or after[0] == '-') and len(after) > 1 and after[1].isalpha():
+                        continue
+                is_known_c = domain_c_lower in self._UPI_PROVIDERS
+                is_short_c = '.' not in domain_c_lower and len(domain_c_lower) <= 15
+                is_email_c = any(domain_c_lower.startswith(ed) for ed in self._EMAIL_DOMAINS)
+                if (is_known_c or is_short_c) and len(local_c) >= 2 and not is_email_c:
                     data["upiIds"].add(match.lower())
 
     def _extract_emails(self, text: str, data: Dict[str, Set[str]]) -> None:
