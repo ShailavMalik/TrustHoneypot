@@ -1,10 +1,33 @@
-"""5-stage adaptive engagement engine. Generates human-like victim-persona
-responses to keep scammers talking and extract intelligence.
+"""agent.py — 5-Stage Adaptive Engagement Controller
+=====================================================
 
-Phase 2.2 — rubric-perfect response selection:
-  Uses DeepEngagementEngine for neural response ranking when available,
-  with graceful fallback to weighted-random selection.
-  Micro-jitter handled in main.py as async sleep for event-loop safety."""
+Generates human-like victim-persona responses to keep scammers talking
+while systematically extracting actionable intelligence (phone numbers,
+account details, UPI IDs, etc.).
+
+Engagement stages:
+    Stage 1 — Confused but curious:     "Who is this? I don’t recognise this number."
+    Stage 2 — Verifying authenticity:   "Can you give me your employee ID?"
+    Stage 3 — Concerned and cautious:   "You’re worrying me. Let me think."
+    Stage 4 — Cooperative but probing:  "Okay, give me the account details slowly."
+    Stage 5 — Extraction-focused:       "I have my banking app open. Give me the UPI ID."
+
+Response selection pipeline:
+    1. Detect current scammer tactic from message keywords
+    2. Augment tactics with neural intent classification (engagement_ml.py)
+    3. Compute engagement stage from risk score + message count
+    4. Check quality thresholds — force probing if metrics are low
+    5. Select response pool matching tactic + stage
+    6. Filter redundant asks (skip questions about already-obtained intel)
+    7. ML-rank candidates or fallback to weighted random selection
+    8. Enhance response with red-flag and elicitation phrases for scoring
+
+Anti-repetition features:
+    - Theme diversity tracking (avoids consecutive same-theme responses)
+    - Tactic streak detection (blends variety after 3+ same-tactic turns)
+    - Used-response set per session (resets when pool exhausted)
+    - Extracted-intel filtering (stops asking for data already obtained)
+"""
 
 import logging
 import random
@@ -481,7 +504,7 @@ class EngagementController:
 
         # Check if quality-aware probing is needed (import here to avoid circular)
         try:
-            from app.conversation_quality import quality_tracker
+            from src.conversation_quality import quality_tracker
             
             # Record this turn
             quality_tracker.record_turn(session_id)
@@ -543,7 +566,7 @@ class EngagementController:
         
         # Track quality metrics for the response
         try:
-            from app.conversation_quality import quality_tracker
+            from src.conversation_quality import quality_tracker
             quality_tracker.record_question(session_id, response)
             
             # Check if this is an investigative question
@@ -862,7 +885,7 @@ class EngagementController:
     ) -> str:
         """Use the deep ML engine for response ranking; fall back to random."""
         try:
-            from app.engagement_ml import deep_engine
+            from src.engagement_ml import deep_engine
 
             if deep_engine.is_ready:
                 result = deep_engine.select_response(
@@ -896,7 +919,7 @@ class EngagementController:
         AND keyword detection missed them — avoids double-counting.
         """
         try:
-            from app.engagement_ml import deep_engine, INTENT_NAMES
+            from src.engagement_ml import deep_engine, INTENT_NAMES
 
             if not deep_engine.is_ready:
                 return keyword_tactics

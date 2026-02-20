@@ -1,15 +1,29 @@
-"""Production-grade regex-based intelligence extraction engine with canonical normalization.
+"""extractor.py — Regex-Based Intelligence Extraction Engine
+=============================================================
 
-Extracts phones (Indian mobile, landline, toll-free), bank accounts,
-UPI IDs, emails, URLs, Aadhaar numbers, PAN cards, IFSC codes,
-monetary amounts, and reference/case IDs from scammer messages.
+Extracts actionable intelligence from scammer messages using comprehensive
+regex pattern matching with canonical normalization for deduplication.
 
-Features:
-- Canonical normalization for deduplication
-- Phone conversion to +91XXXXXXXXXX format
-- URL lowercase + trailing slash strip
-- All entities de-duplicated per session
-- Thread-safe operations
+Entity types extracted (10 categories):
+    1. Phone numbers      → Indian mobile, landline, toll-free, WhatsApp formats
+    2. Bank accounts       → 9-18 digit sequences with contextual keyword matching
+    3. UPI IDs             → 80+ known Indian UPI providers + short handles
+    4. Email addresses     → Standard format, excluding UPI provider domains
+    5. URLs/phishing links → HTTP(S), URL shorteners, suspicious TLDs
+    6. Aadhaar numbers     → 12-digit Indian unique ID (Verhoeff-plausible)
+    7. PAN cards           → ABCDE1234F format Indian tax IDs
+    8. IFSC codes          → ABCD0NNNNNN bank branch identifiers
+    9. Monetary amounts    → Rs/₹/INR formatted values
+   10. Reference/case IDs  → Fake complaint numbers, FIR refs, policy numbers
+
+Normalization strategy:
+    - Phones:   Canonical +91XXXXXXXXXX (10-digit Indian mobile)
+    - URLs:     Lowercase, trailing slash stripped
+    - UPI IDs:  Lowercase for case-insensitive matching
+    - Emails:   Lowercase
+    - Bank accounts: Spaces and dashes stripped
+
+All entities are deduplicated per session using thread-safe Set storage.
 """
 
 import re

@@ -1,13 +1,36 @@
 """
-Production-grade multi-layer risk scoring engine for scam detection.
+detector.py — Multi-Layer Scam Risk Scoring Engine
+===================================================
 
-Analyses messages through 12 core + 8 auxiliary signal layers covering
-all major Indian scam categories (bank fraud, UPI fraud, phishing,
-impersonation, digital arrest, courier, lottery, tech support, job fraud,
-loan fraud, insurance, romance scams). Includes Hindi/Hinglish patterns.
+The core detection engine that analyzes scammer messages through 20 signal
+layers (12 core + 8 auxiliary) to produce a cumulative risk score per session.
 
-Maintains cumulative risk per session. Score >= 40 triggers scam confirmation.
-First-message pure greetings are suppressed to avoid false positives.
+Coverage includes all major Indian scam categories:
+    - Bank fraud (SBI, HDFC, ICICI impersonation)
+    - UPI fraud (fake payment requests, QR codes)
+    - Phishing (OTP theft, credential harvesting)
+    - Authority impersonation (RBI, CBI, Police, IT Dept)
+    - Digital arrest (fake video-call court proceedings)
+    - Courier/parcel (drugs-found-in-package scam)
+    - Lottery/prize (KBC, Amazon Lucky Draw)
+    - Tech support (fake virus, AnyDesk remote access)
+    - Job fraud (Telegram tasks, fake work-from-home)
+    - Loan fraud (instant loan apps, processing fees)
+    - Insurance fraud (unclaimed policies, fake maturity)
+    - Romance scams (emotional manipulation, gift parcels)
+
+Scoring mechanics:
+    1. Each message is scored against all 20 signal layers
+    2. Matching regex patterns contribute weighted points (6-25 per match)
+    3. Escalation bonuses reward compound signals (2+ simultaneous categories)
+    4. Repeat-signal bonuses penalize persistent tactics (+6 for 2x, +12 for 3x+)
+    5. Score >= 40 triggers scam confirmation (deliberately low for fast detection)
+
+Multi-language support:
+    All pattern layers include Hindi/Hinglish variants for Indian market coverage.
+
+Thread safety:
+    Per-session RiskProfile access is protected by threading.Lock.
 """
 
 import re
@@ -16,6 +39,8 @@ from typing import Tuple, Dict, List, Set
 from dataclasses import dataclass, field
 
 
+# Valid scam type labels used for classification output.
+# These map to the evaluator's expected scam_type values.
 VALID_SCAM_TYPES = frozenset([
     "bank_fraud", "upi_fraud", "phishing", "impersonation",
     "investment", "courier", "lottery", "tech_support",
@@ -25,14 +50,18 @@ VALID_SCAM_TYPES = frozenset([
 
 @dataclass
 class RiskProfile:
-    """Per-session risk accumulation state."""
-    cumulative_score: float = 0.0
-    turn_scores: List[float] = field(default_factory=list)
-    triggered_signals: Set[str] = field(default_factory=set)
-    signal_counts: Dict[str, int] = field(default_factory=dict)
-    scam_detected: bool = False
-    scam_type: str = "unknown"
-    message_count: int = 0
+    """Per-session risk accumulation state.
+    
+    Tracks the running score, per-turn breakdowns, which signal
+    categories have fired, and the final scam classification.
+    """
+    cumulative_score: float = 0.0                          # Running total risk score
+    turn_scores: List[float] = field(default_factory=list)  # Score per individual message
+    triggered_signals: Set[str] = field(default_factory=set)  # Unique signal categories hit
+    signal_counts: Dict[str, int] = field(default_factory=dict)  # Hit count per category
+    scam_detected: bool = False                            # True once threshold breached
+    scam_type: str = "unknown"                             # Classified scam label
+    message_count: int = 0                                 # Messages analyzed so far
 
 
 class RiskAccumulator:
@@ -245,8 +274,11 @@ class RiskAccumulator:
     ]
 
     # ================================================================
-    # ESCALATION BONUSES — compound signal categories = higher risk
-    # Boosted for 3+ simultaneous signals to ensure fast threshold breach
+    # ESCALATION BONUSES — Compound signal categories = higher risk
+    # When a session triggers N distinct signal types simultaneously,
+    # an escalation bonus is applied. More categories = more confidence
+    # that this is a real scam, not a false positive.
+    # Boosted for 3+ simultaneous signals to ensure fast threshold breach.
     # ================================================================
 
     ESCALATION_BONUSES: Dict[int, float] = {

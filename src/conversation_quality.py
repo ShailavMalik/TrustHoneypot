@@ -1,19 +1,30 @@
 """
-Conversation Quality Tracker — Ensures scoring thresholds are met before finalization.
+conversation_quality.py — Engagement Quality Threshold Tracker
+================================================================
 
-Tracks:
-- turn_count
-- questions_asked
-- investigative_questions
-- red_flags_identified  
-- elicitation_attempts
+Ensures the honeypot conversation meets minimum quality thresholds
+before the final callback is dispatched to the evaluation endpoint.
 
-Guarantees BEFORE finalization:
-- turn_count >= 8
-- questions_asked >= 5
-- investigative_questions >= 3
-- red_flags_identified >= 5
-- elicitation_attempts >= 5
+Tracked metrics:
+    turn_count               — Total conversation turns (scammer + agent)
+    questions_asked           — Agent responses containing question marks
+    investigative_questions   — Probing questions about identity/credentials
+    red_flags_identified      — Unique scam indicators the agent acknowledged
+    elicitation_attempts      — Questions designed to extract scammer intel
+
+Minimum thresholds (must ALL be met before finalization):
+    turn_count              >= 8     (sufficient conversation depth)
+    questions_asked         >= 5     (active engagement, not passive)
+    investigative_questions >= 3     (credential verification attempts)
+    red_flags_identified    >= 5     (awareness of scam indicators)
+    elicitation_attempts    >= 5     (intelligence extraction efforts)
+
+Compound probing:
+    When multiple thresholds are still missing AND the turn budget is
+    running low (>= half turns used), the tracker generates compound
+    responses that address 2-3 gaps in a single turn by stitching together
+    a red-flag observation + investigative question + elicitation request
+    with natural language connectors.
 """
 
 import threading
@@ -214,7 +225,7 @@ _INTEL_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def _filter_templates_by_intel(templates: List[str], intel: Dict) -> List[str]:
+def _filter_templates_by_intel(templates: List[str], intel: Optional[Dict]) -> List[str]:
     """Filter out templates that ask for already-obtained intel types."""
     if not intel:
         return templates

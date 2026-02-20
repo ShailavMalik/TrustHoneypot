@@ -1,11 +1,11 @@
 """
-Deep ML-Powered Engagement Optimization Engine
-================================================
+engagement_ml.py — Deep ML-Powered Engagement Optimization Engine
+==================================================================
 
-Lightweight neural architecture for intelligent scam engagement that replaces
-random response selection with ML-ranked selection.
+A lightweight neural architecture that replaces random response selection
+with ML-ranked selection for more contextually appropriate victim replies.
 
-Architecture:
+Architecture overview:
     ┌─────────────┐     ┌────────────────┐
     │ TextEncoder  │────▶│ SelfAttention  │
     │ (char+word)  │     │ (4-head)       │──┐
@@ -21,12 +21,19 @@ Architecture:
     │ (pre-computed)   │                         │ (rank pool)  │
     └──────────────────┘                         └──────────────┘
 
-Performance:
-    - Initialisation: ~40ms (pre-computes response embeddings)
+Components:
+    TextEncoder            — Char-trigram + word-bigram feature hashing → 128-d dense vector
+    MultiHeadSelfAttention — 4-head scaled dot-product attention for cross-feature interaction
+    GRUCell                — Recurrent cell tracking conversation momentum across turns (64-d)
+    NeuralIntentClassifier — Hybrid FC + anchor similarity + keyword overlap (15 intent classes)
+    EngagementScorer       — 3-layer feed-forward network scoring response candidates (345→128→64→1)
+
+Performance characteristics:
+    - Initialization: ~40ms (pre-computes response embeddings)
     - Inference: <1ms per response selection
-    - Memory: ~300KB (weights + caches)
+    - Memory footprint: ~300KB (weights + caches) 
     - Dependencies: numpy only (no GPU required)
-"""
+    - Graceful fallback: Falls back to random selection if numpy is unavailable
 
 from __future__ import annotations
 

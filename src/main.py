@@ -1,14 +1,28 @@
-"""FastAPI entry point for 100/100 scoring honeypot.
+"""
+main.py — FastAPI Entry Point & Request Pipeline
+==================================================
 
-Wires detection -> extraction -> quality tracking -> engagement -> callback pipeline.
-Exposes GET / (health) and POST /honeypot (conversation endpoint).
+This is the central orchestrator for the honeypot system. Every incoming
+scammer message flows through a 7-stage pipeline:
+
+    1. Session Management   → Create or retrieve conversation state
+    2. History Replay        → Process prior messages for context
+    3. Risk Analysis         → Score message through 20 signal layers
+    4. Intelligence Extract  → Pull phones, accounts, UPIs, links, etc.
+    5. Quality Tracking      → Ensure engagement meets scoring rubric
+    6. Response Generation   → Select contextually appropriate reply
+    7. Callback Dispatch     → Send final result to evaluation endpoint
 
 Key guarantees:
-- < 2 second response time
-- Exactly ONE callback per session  
-- Quality thresholds met before finalization
-- No hardcoded scenario phrases
-- Dynamic engagement duration
+    - Response time < 2 seconds (SLA hard cap 1.8s + 200ms network margin)
+    - Exactly ONE callback per session (finalization guard in memory.py)
+    - Quality thresholds checked before any callback is sent
+    - No hardcoded scenario phrases — all responses are template-based
+    - Dynamic engagement duration per session (randomized variance)
+
+Endpoints:
+    GET  /          → Health check (returns service status + version)
+    POST /honeypot  → Main conversation endpoint (requires x-api-key)
 """
 
 import asyncio
@@ -21,37 +35,43 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.models import HoneypotRequest, HoneypotResponse
-from app.auth import verify_api_key
-from app.detector import risk_accumulator
-from app.extractor import intelligence_store
-from app.agent import engagement_controller
-from app.memory import memory
-from app.conversation_quality import quality_tracker
-from app.callback import (
+from src.models import HoneypotRequest, HoneypotResponse
+from src.auth import verify_api_key
+from src.detector import risk_accumulator
+from src.extractor import intelligence_store
+from src.agent import engagement_controller
+from src.memory import memory
+from src.conversation_quality import quality_tracker
+from src.callback import (
     build_final_output,
     send_callback_async,
     should_send_callback,
 )
 
+# ── Logging Configuration ─────────────────────────────────────────────
+# Structured log format: timestamp | module | level | message
+# All pipeline stages log with [session_id[:8]] prefix for tracing
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
+# ── FastAPI Application Instance ──────────────────────────────────────
+# Serves as the ASGI application; Uvicorn connects to src.main:app
 app = FastAPI(
     title="Agentic Honey-Pot API",
     description="Phase 2.2 — 100/100 Scam Detection, Engagement, and Intelligence Extraction",
     version="2.2.0",
 )
 
+# CORS middleware — permissive for hackathon demo; restrict in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],          # Allow all origins for demo
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],          # Allow all HTTP methods
+    allow_headers=["*"],          # Allow all headers (including x-api-key)
 )
 
 
@@ -103,10 +123,10 @@ async def process_message(
     start_time = time.time()
     
     try:
-        # Extract request parameters with validation
-        session_id = request.sessionId
-        current_text = request.message.text or ""
-        history = request.conversationHistory or []
+        # ── Extract & validate request parameters ─────────────────────
+        session_id = request.sessionId           # Unique conversation identifier
+        current_text = request.message.text or ""  # Current scammer message text
+        history = request.conversationHistory or []  # Prior messages in this session
 
         # Validate minimum requirements
         if not session_id or not current_text.strip():
@@ -258,14 +278,15 @@ async def process_message(
             f"elapsed={elapsed_ms:.0f}ms"
         )
 
-        # ── Async micro-jitter (replaces sync sleep in agent.py) ──────
-        # Target a human-realistic total response time of 0.4–1.0s.
-        # If processing already consumed most of the budget, skip jitter.
+        # ── Async micro-jitter for human-realistic response timing ─────
+        # Real humans don't respond instantly — we simulate 0.4–1.0s delay.
+        # The jitter is calibrated against actual elapsed processing time
+        # to stay within the 2-second SLA (hard cap at 1.8s, 200ms for network).
         elapsed = time.time() - start_time
-        SLA_HARD_CAP = 1.8  # never exceed this (leaves 200ms network margin)
-        target_total = random.uniform(0.4, 1.0)  # human-realistic window
+        SLA_HARD_CAP = 1.8    # Maximum total response time (seconds)
+        target_total = random.uniform(0.4, 1.0)  # Human-realistic response window
         remaining_jitter = max(0.0, min(target_total - elapsed, SLA_HARD_CAP - elapsed))
-        if remaining_jitter > 0.02:  # only sleep if meaningful (>20ms)
+        if remaining_jitter > 0.02:  # Only sleep if meaningful (>20ms)
             await asyncio.sleep(remaining_jitter)
 
         return HoneypotResponse(status="success", reply=reply)

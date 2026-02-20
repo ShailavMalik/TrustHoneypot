@@ -1,9 +1,23 @@
-"""Thread-safe in-memory session store with finalization guard.
+"""memory.py — Thread-Safe In-Memory Session Store
+==================================================
 
-Tracks messages, timestamps, scam flags, callback state, and ensures
-exactly ONE callback submission per session via finalization guard.
+Maintains per-session conversation state throughout the scam detection pipeline.
+Each session tracks:
+    - Message history (sender + text + timestamp)
+    - Scam confirmation flag (set by detector when threshold breached)
+    - Finalization guard (ensures exactly ONE callback per session)
+    - Engagement duration (with randomized variance for realistic timing)
+    - Turn count (scammer messages only, for stage progression)
 
-Includes automatic session cleanup for expired sessions (> 1 hour).
+Thread safety:
+    All session mutations are protected by a threading.Lock to support
+    concurrent requests from multiple evaluator threads.
+
+Session lifecycle:
+    1. ensure_session()    → Created on first access
+    2. add_message()       → Grows with conversation
+    3. mark_finalized()    → Atomic one-shot guard for callback
+    4. _maybe_cleanup()    → Expired sessions purged every 10 minutes
 """
 
 import threading
@@ -12,7 +26,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 
 
-# Session expiration time (1 hour)
+# Session expiration time — sessions older than 1 hour are eligible for cleanup.
+# This prevents unbounded memory growth during long-running server instances.
 SESSION_EXPIRY_SECONDS: int = 3600
 
 
@@ -31,21 +46,32 @@ class SessionMemory:
         self._last_cleanup: datetime = datetime.now(timezone.utc)
 
     def ensure_session(self, session_id: str) -> dict:
-        """Create or retrieve session with all required state fields."""
+        """Create or retrieve a session, initializing all required state fields.
+        
+        Each session contains:
+            start_time:        UTC timestamp of session creation
+            messages:          List of {sender, text, ts} message dicts
+            scam_confirmed:    True once risk score exceeds detection threshold
+            callback_sent:     Legacy flag (replaced by final_submitted)
+            final_submitted:   Strict single-callback guard (atomic)
+            agent_response:    Last agent reply (for deduplication)
+            turn_count:        Number of scammer messages processed
+            duration_variance: Random 5-55s offset for realistic engagement timing
+        """
         with self._lock:
-            # Periodic cleanup (every 100 sessions or 10 minutes)
+            # Periodically purge expired sessions to prevent memory leaks
             self._maybe_cleanup()
             
             if session_id not in self._sessions:
                 self._sessions[session_id] = {
                     "start_time": datetime.now(timezone.utc),
-                    "messages": [],
-                    "scam_confirmed": False,
-                    "callback_sent": False,
-                    "final_submitted": False,  # Strict finalization guard
-                    "agent_response": None,
-                    "turn_count": 0,
-                    "duration_variance": random.randint(5, 55),  # Unique per session
+                    "messages": [],                          # Full message history
+                    "scam_confirmed": False,                 # Detector confirmation flag
+                    "callback_sent": False,                  # Legacy compat flag
+                    "final_submitted": False,                # Strict finalization guard
+                    "agent_response": None,                  # Last agent reply
+                    "turn_count": 0,                         # Scammer message count
+                    "duration_variance": random.randint(5, 55),  # Per-session timing jitter
                 }
             return self._sessions[session_id]
 

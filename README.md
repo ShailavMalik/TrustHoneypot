@@ -1,126 +1,70 @@
-# Agentic Honey-Pot API
+# Honeypot API
 
-**Scam Detection, ML-Powered Engagement & Intelligence Extraction System**
+## Description
 
-Built for the **India AI Impact Buildathon (GUVI)** — Problem Statement 2
+An intelligent scam-detection honeypot API that acts as a convincing victim persona to waste scammers' time while extracting actionable intelligence. The system detects scam tactics in real-time, adaptively engages the scammer through a 5-stage conversation progression, and extracts identifiers like phone numbers, bank accounts, and UPI IDs — all reported through a structured callback payload.
 
----
+**Strategy:** Rather than immediately blocking scammers, the honeypot keeps them engaged in a realistic conversation, progressively probing for intelligence while maintaining the illusion of a confused, elderly victim. A deep ML engine ranks response candidates for contextually appropriate replies.
 
-## What it does
+## Tech Stack
 
-A **FastAPI** backend that acts as an intelligent honeypot for phone/SMS scammers:
+- **Language:** Python 3.9+
+- **Framework:** FastAPI (async ASGI) + Uvicorn
+- **Validation:** Pydantic v2
+- **ML Engine:** Custom neural architecture (numpy only, no GPU required)
+  - TextEncoder (char-trigram + word-bigram hashing → 128-d vectors)
+  - 4-Head Self-Attention for cross-feature interaction
+  - GRU Cell for conversation state tracking (64-d hidden state)
+  - Neural Intent Classifier (15 intent classes)
+  - Engagement Scorer (3-layer feed-forward, 345→128→64→1)
+- **Key Libraries:** requests, python-dotenv, numpy
+- **Deployment:** Railway / any ASGI-compatible host
 
-1. **Detects scams** — 20-layer risk scoring engine (12 core + 8 auxiliary) with cumulative scoring across Hindi/English/Hinglish
-2. **Engages the scammer** — 5-stage adaptive persona powered by a deep ML engagement engine
-3. **Extracts intelligence** — Phones, bank accounts, UPI IDs, URLs, emails, Aadhaar, PAN, IFSC codes
-4. **Reports to evaluator** — Sends structured callback to GUVI endpoint on every eligible turn
+## Setup Instructions
 
-Response format:
-
-```json
-{ "status": "success", "reply": "Hello? Who is this?" }
-```
-
----
-
-## Architecture
-
-### Pipeline
-
-```
-POST /honeypot
-  │
-  ├── 1. Session Management   (memory.py)
-  ├── 2. History Replay        (detector + extractor)
-  ├── 3. Risk Analysis         (detector.py — 20 signal layers)
-  ├── 4. Intelligence Extract  (extractor.py — 10 entity types)
-  ├── 5. ML Response Selection (engagement_ml.py → agent.py)
-  └── 6. Callback Dispatch     (callback.py)
-```
-
-### Deep ML Engagement Engine
-
-A lightweight neural architecture (`engagement_ml.py`) that replaces random response selection with ML-ranked selection:
-
-```
-┌─────────────┐     ┌────────────────┐
-│ TextEncoder  │────▶│ SelfAttention  │
-│ (char+word)  │     │ (4-head)       │──┐
-└─────────────┘     └────────────────┘  │
-                                         │   ┌──────────────┐
-┌─────────────────┐                      ├──▶│ IntentHead   │
-│ ConversationGRU │──────────────────────┤   │ (15 classes) │
-│ (64-dim state)  │                      │   └──────────────┘
-└─────────────────┘                      │
-                                         │   ┌──────────────┐
-┌──────────────────┐                     └──▶│ Engagement   │
-│ ResponseEncoder  │────────────────────────▶│ Scorer       │
-│ (pre-computed)   │                         │ (rank pool)  │
-└──────────────────┘                         └──────────────┘
-```
-
-| Component                  | Role                                                       | Dimensions         |
-| -------------------------- | ---------------------------------------------------------- | ------------------ |
-| **TextEncoder**            | Char-trigram + word-bigram feature hashing → dense vectors | 128-d              |
-| **MultiHeadSelfAttention** | 4-head attention for cross-feature interaction             | 4 × 32             |
-| **GRUCell**                | Recurrent conversation-state tracking across turns         | 64-d hidden        |
-| **NeuralIntentClassifier** | Hybrid FC + anchor-similarity + keyword-overlap            | 15 classes         |
-| **EngagementScorer**       | Feed-forward network ranking response candidates           | 345 → 128 → 64 → 1 |
-
-**Performance:** ~0.7ms inference · ~300KB memory · numpy-only (no GPU required) · graceful fallback to random if numpy is unavailable
-
----
-
-## Project Structure
-
-```
-app/
-├── main.py            # FastAPI routes + pipeline
-├── auth.py            # API key auth (x-api-key header)
-├── models.py          # Pydantic schemas
-├── detector.py        # 20-layer risk scoring engine
-├── extractor.py       # Regex intelligence extraction (10 entity types)
-├── agent.py           # 5-stage engagement controller (ML-enhanced)
-├── engagement_ml.py   # Deep ML engagement engine (neural response ranking)
-├── memory.py          # Thread-safe session store
-└── callback.py        # Callback builder + sender
-```
-
----
-
-## Setup & Run
-
-### Prerequisites
-
-- Python 3.9+
-
-### Install
+### 1. Clone the repository
 
 ```bash
-git clone <repo-url> && cd TrustHoneypot_API
-python -m venv venv
+git clone <repo-url>
+cd TrustHoneypot_API
+```
+
+### 2. Create and activate virtual environment
+
+```bash
+python -m venv .venv
 
 # Windows PowerShell:
-.\venv\Scripts\Activate.ps1
-# Linux/Mac:
-source venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 
+# Linux/Mac:
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
+```
+
+### 4. Set environment variables
+
+```bash
 cp .env.example .env
 # Edit .env and set your API_KEY
 ```
 
-### Run locally
+### 5. Run the application
 
 ```bash
 # Development (with auto-reload)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 # Production
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-**Windows shortcut:**
+**Windows shortcuts:**
 
 ```powershell
 .\start_server.ps1
@@ -128,138 +72,159 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 start_server.bat
 ```
 
-- API: http://localhost:8000
-- Docs: http://localhost:8000/docs
-- Health: http://localhost:8000/
-
----
-
-## Testing
-
-### Quick health check
+### Quick Verification
 
 ```bash
+# Health check
 curl http://localhost:8000/
+
+# Should return: {"status": "online", "service": "Agentic Honey-Pot API", "version": "2.2.0"}
 ```
 
-### Single-turn test
+## API Endpoint
 
-```bash
-curl -X POST http://localhost:8000/honeypot \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "test-001",
-    "message": {
-      "sender": "scammer",
-      "text": "This is RBI. Your account will be blocked. Share OTP immediately."
-    },
-    "conversationHistory": []
-  }'
-```
+- **URL:** `https://your-deployed-url.com/honeypot`
+- **Method:** POST
+- **Authentication:** `x-api-key` header
 
-### Multi-turn test (Python)
-
-```bash
-python test_scenarios.py
-```
-
-This runs a full 6-turn scam simulation and prints detection results, extracted intelligence, and engagement quality.
-
-### Other test files
-
-| File                         | Purpose                  |
-| ---------------------------- | ------------------------ |
-| `test_detection.py`          | Scam detection accuracy  |
-| `test_false_positive.py`     | False positive rate      |
-| `test_multiturn_callback.py` | Multi-turn callback flow |
-| `quick_test.py`              | Quick smoke test         |
-| `validate.py`                | Full validation suite    |
-
-### Run evaluation scoring
-
-```bash
-python self_test_eval.py
-```
-
-Reports a detailed score breakdown (detection + extraction + engagement + structure = /100).
-
----
-
-## API Reference
-
-### `GET /`
-
-Returns: `{ "status": "online", "service": "Agentic Honey-Pot API", "version": "2.0.0" }`
-
-### `POST /honeypot`
-
-**Headers:** `x-api-key: <key>`, `Content-Type: application/json`
-
-**Body:**
+### Request Format
 
 ```json
 {
-  "sessionId": "unique-id",
-  "message": { "sender": "scammer", "text": "..." },
+  "sessionId": "unique-session-id",
+  "message": {
+    "sender": "scammer",
+    "text": "This is RBI. Your account will be blocked. Share OTP immediately."
+  },
   "conversationHistory": [
-    { "sender": "scammer", "text": "...", "timestamp": "..." }
+    { "sender": "scammer", "text": "previous message..." }
   ]
 }
 ```
 
-**Response:** `{ "status": "success", "reply": "..." }`
+### Response Format
 
----
+```json
+{
+  "status": "success",
+  "reply": "Hello? Who is this? I don't recognise this number."
+}
+```
 
-## Deployment (Railway)
+### Health Check
+
+- **URL:** `GET /`
+- **Response:** `{"status": "online", "service": "Agentic Honey-Pot API", "version": "2.2.0"}`
+
+## Approach
+
+### How We Detect Scams
+
+The detection engine scores messages through **20 signal layers** (12 core + 8 auxiliary) covering Indian scam categories:
+
+| Signal Layer       | Examples                                     | Weight |
+| ------------------ | -------------------------------------------- | ------ |
+| Urgency            | "immediately", "last chance", "jaldi"        | 10-16  |
+| Authority          | "RBI", "CBI", "Police", "Income Tax"         | 10-18  |
+| OTP Request        | "share the OTP", "6-digit code"              | 18-25  |
+| Payment Request    | "transfer now", "processing fee"             | 14-20  |
+| Account Suspension | "account blocked", "KYC expired"             | 14-18  |
+| Legal Threats      | "arrest warrant", "digital arrest"           | 14-20  |
+| Phishing URLs      | bit.ly links, AnyDesk, suspicious TLDs       | 8-20   |
+| + 13 more layers   | Courier, job fraud, investment, insurance... | 8-20   |
+
+Cumulative scoring with **escalation bonuses** for compound signals ensures fast detection (threshold: 40 points).
+
+### How We Extract Intelligence
+
+**10 entity types** extracted via regex with canonical normalization:
+
+- Phone numbers (Indian mobile/landline/toll-free) → `+91XXXXXXXXXX`
+- Bank account numbers (9-18 digits, contextual matching)
+- UPI IDs (80+ known Indian UPI providers)
+- Email addresses, phishing URLs
+- Aadhaar numbers, PAN cards, IFSC codes
+- Fake case IDs, policy numbers, order numbers
+
+### How We Maintain Engagement
+
+**5-stage adaptive persona** that progresses based on risk score:
+
+1. **Confused** — "Who is this? I don't recognise this number."
+2. **Verifying** — "Can you give me your employee ID and callback number?"
+3. **Concerned** — "You're worrying me. Let me call my son first."
+4. **Cooperative** — "Okay, give me the complete account details slowly."
+5. **Extracting** — "I have my banking app open. What is the UPI ID?"
+
+**ML-powered response ranking:** A custom neural engine (TextEncoder → Self-Attention → GRU → Intent Classifier → Engagement Scorer) selects the most contextually appropriate response from 200+ templates.
+
+**Quality assurance:** Conversation quality tracker ensures minimum thresholds (8 turns, 5 questions, 3 investigative probes, 5 red flag acknowledgments, 5 elicitation attempts) are met before the final callback is sent.
+
+## Project Structure
 
 ```
-web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+TrustHoneypot_API/
+├── README.md                     # This file — setup and usage instructions
+├── requirements.txt              # Python dependencies
+├── Procfile                      # Railway/Heroku deployment config
+├── .env.example                  # Environment variables template
+├── start_server.ps1              # Windows PowerShell start script
+├── start_server.bat              # Windows CMD start script
+├── src/                          # Source code
+│   ├── __init__.py               # Package initialization
+│   ├── main.py                   # FastAPI app + request pipeline orchestrator
+│   ├── agent.py                  # 5-stage engagement controller (honeypot logic)
+│   ├── detector.py               # 20-layer scam risk scoring engine
+│   ├── extractor.py              # Regex intelligence extraction (10 entity types)
+│   ├── engagement_ml.py          # Deep ML engine (neural response ranking)
+│   ├── conversation_quality.py   # Quality threshold tracker
+│   ├── callback.py               # Callback builder + async sender
+│   ├── memory.py                 # Thread-safe session state store
+│   ├── models.py                 # Pydantic request/response schemas
+│   └── auth.py                   # API key authentication
+└── docs/                         # Additional documentation
+    └── architecture.md           # System architecture deep-dive
 ```
 
-Set `API_KEY` and `CALLBACK_URL` in Railway environment variables.
+## Testing
 
----
+```bash
+# Run scenario tests
+python test_scenarios.py
 
-## Scoring Breakdown
+# Run detection accuracy tests
+python test_detection.py
 
-| Category                | Points | How                                                       |
-| ----------------------- | ------ | --------------------------------------------------------- |
-| Scam Detection          | 20     | Fires on first scammer turn; correct type                 |
-| Intelligence Extraction | 40     | Multi-format phones, filtered banks, UPI + email          |
-| Engagement Quality      | 20     | >= 5 messages, >= 60s duration, unique replies            |
-| Response Structure      | 20     | `{status, reply}` only; `"status": "success"` in callback |
+# Run false positive tests
+python test_false_positive.py
 
----
+# Run full evaluation scoring
+python self_test_eval.py
+```
+
+## Deployment
+
+### Railway
+
+The `Procfile` is pre-configured:
+
+```
+web: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set these environment variables in Railway:
+
+- `API_KEY` — your API key
+- `CALLBACK_URL` — evaluation endpoint URL
 
 ## Dependencies
 
-fastapi 0.115.0 · uvicorn 0.32.1 · pydantic 2.10.3 · pydantic-settings 2.6.1 · python-dotenv 1.0.1 · requests 2.32.3 · numpy ≥1.24
-
----
-
-## How the ML Engine Works
-
-1. **Text Encoding** — Each scammer message is encoded via FNV-1a feature hashing (char-trigrams + word-bigrams) into a 128-d dense vector. No vocabulary or tokenizer needed.
-
-2. **Self-Attention** — A 4-head scaled dot-product attention layer enables cross-feature interaction across the embedding dimensions.
-
-3. **Conversation GRU** — A gated recurrent unit maintains a 64-d hidden state per session, capturing conversation momentum, escalation pace, and topic shifts across turns.
-
-4. **Intent Classification** — A hybrid classifier blends three signals:
-   - FC network logits (35%)
-   - Cosine similarity to pre-computed intent anchors (30%)
-   - Direct keyword-overlap counting (35%)
-
-   Classifies into 15 intents: urgency, authority, OTP request, payment request, suspension, prize lure, suspicious URL, emotional pressure, legal threat, courier, tech support, job fraud, investment, identity theft, neutral.
-
-5. **Response Scoring** — All candidate responses are batch-scored through a 3-layer feed-forward network (345→128→64→1) using concatenated features: message embedding, response embedding, GRU state, intent probabilities, and 10 hand-crafted engagement features.
-
-6. **Context Bonuses** — Stage-aware boosts reward confusion in early stages, probing in middle stages, and intelligence extraction in late stages.
-
-7. **Temperature Sampling** — Softmax with τ=0.6 balances exploitation of top-scored responses with exploration for natural variety.
-
----
-
-_Built for the India AI Impact Buildathon (GUVI) 2026._
+| Package           | Version | Purpose                       |
+| ----------------- | ------- | ----------------------------- |
+| fastapi           | 0.115.0 | ASGI web framework            |
+| uvicorn           | 0.32.1  | ASGI server                   |
+| pydantic          | 2.10.3  | Request/response validation   |
+| pydantic-settings | 2.6.1   | Settings management           |
+| python-dotenv     | 1.0.1   | Environment variable loading  |
+| requests          | 2.32.3  | HTTP client for callbacks     |
+| numpy             | ≥2.0.0  | ML engine (optional fallback) |
