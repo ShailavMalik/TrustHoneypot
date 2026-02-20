@@ -333,10 +333,10 @@ class IntelligenceStore:
     def _extract_phones(self, text: str, data: Dict[str, Set[str]]) -> None:
         """
         Match Indian phone numbers (mobile, landline, toll-free, WhatsApp)
-        and store multiple format variants so the evaluator's substring check
-        hits regardless of formatting.
+        and store ONLY the canonical +91XXXXXXXXXX format to avoid duplicates.
         
-        Stores: raw match, cleaned 10-digit, +91-prefixed, 91-prefixed, 0-prefixed
+        Previously stored 15+ format variants which caused bloat and confusion.
+        Now deduplicates to single canonical form per unique number.
         """
         for pattern in self.PHONE_PATTERNS:
             for match_obj in re.finditer(pattern, text):
@@ -355,28 +355,13 @@ class IntelligenceStore:
                     cleaned = cleaned[1:]
 
                 if len(cleaned) == 10 and cleaned[0] in '6789':
-                    # Store all common formats for maximum match rate
-                    data["phoneNumbers"].add(cleaned)
-                    data["phoneNumbers"].add(raw)
-                    data["phoneNumbers"].add(match_obj.group(0).strip())
-                    data["phoneNumbers"].add(f"+91-{cleaned}")
-                    data["phoneNumbers"].add(f"+91{cleaned}")
-                    data["phoneNumbers"].add(f"+91 {cleaned}")
-                    data["phoneNumbers"].add(f"91-{cleaned}")
-                    data["phoneNumbers"].add(f"91{cleaned}")
-                    data["phoneNumbers"].add(f"91 {cleaned}")
-                    data["phoneNumbers"].add(f"0{cleaned}")
-                    # Spaced formats
-                    data["phoneNumbers"].add(f"{cleaned[:5]} {cleaned[5:]}")
-                    data["phoneNumbers"].add(f"{cleaned[:5]}-{cleaned[5:]}")
-                    data["phoneNumbers"].add(f"+91 {cleaned[:5]} {cleaned[5:]}")
-                    data["phoneNumbers"].add(f"+91-{cleaned[:5]}-{cleaned[5:]}")
+                    # Store ONLY the canonical +91XXXXXXXXXX format
+                    canonical = f"+91{cleaned}"
+                    data["phoneNumbers"].add(canonical)
 
-                # Also capture toll-free numbers
+                # Also capture toll-free numbers (canonical format)
                 if cleaned.startswith('1800') or cleaned.startswith('1860'):
                     data["phoneNumbers"].add(cleaned)
-                    data["phoneNumbers"].add(raw)
-                    data["phoneNumbers"].add(match_obj.group(0).strip())
 
     def _extract_bank_accounts(self, text: str, data: Dict[str, Set[str]]) -> None:
         """Match bank account numbers (9-18 digits), filtering phones, years, Aadhaar.

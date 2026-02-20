@@ -458,8 +458,10 @@ class EngagementController:
             #  • standard: scam mode + msg_count >= 3
             #  • urgent:   any turn once urgency detected
             if is_scam and (msg_count >= 3 or turn_urgent):
+                # Pass intel to filter out templates asking for already-obtained data
+                intel = ctx.get("extracted_intel", {})
                 probing = quality_tracker.generate_probing_response(
-                    session_id, detected_signals, stage
+                    session_id, detected_signals, stage, intel=intel
                 )
                 if probing:
                     ctx["history"].append(probing)

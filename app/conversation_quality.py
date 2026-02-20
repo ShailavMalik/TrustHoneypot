@@ -194,6 +194,50 @@ ELICITATION_TEMPLATES: List[str] = [
     "What is your registered mobile number on this account?",
 ]
 
+# Keywords that indicate a template asks for a specific intel type
+# Used to filter out questions about already-obtained data
+_INTEL_KEYWORDS: Dict[str, List[str]] = {
+    "phoneNumbers": [
+        "phone number", "phone", "contact number", "mobile number", 
+        "callback number", "direct number", "registered mobile",
+    ],
+    "upiIds": [
+        "upi id", "upi", "upi address",
+    ],
+    "bankAccounts": [
+        "account number", "ifsc", "bank account", "bank details",
+        "beneficiary", "bank branch",
+    ],
+    "emailAddresses": [
+        "email",
+    ],
+}
+
+
+def _filter_templates_by_intel(templates: List[str], intel: Dict) -> List[str]:
+    """Filter out templates that ask for already-obtained intel types."""
+    if not intel:
+        return templates
+    
+    # Build set of keywords to exclude based on obtained intel
+    exclude_keywords: Set[str] = set()
+    for intel_key, keywords in _INTEL_KEYWORDS.items():
+        # If we have at least one item of this intel type, exclude its keywords
+        if intel.get(intel_key):
+            exclude_keywords.update(kw.lower() for kw in keywords)
+    
+    if not exclude_keywords:
+        return templates
+    
+    def _contains_excluded_keyword(template: str) -> bool:
+        template_lower = template.lower()
+        return any(kw in template_lower for kw in exclude_keywords)
+    
+    filtered = [t for t in templates if not _contains_excluded_keyword(t)]
+    
+    # If all templates filtered out, return original to avoid empty pool
+    return filtered if filtered else templates
+
 
 class ConversationQualityTracker:
     """Thread-safe conversation quality tracker ensuring scoring thresholds."""
@@ -279,6 +323,7 @@ class ConversationQualityTracker:
         session_id: str,
         detected_signals: Set[str],
         stage: int,
+        intel: Optional[Dict] = None,
     ) -> Optional[str]:
         """Generate a probing response to meet missing thresholds.
 
@@ -308,9 +353,12 @@ class ConversationQualityTracker:
         turns_used = metrics.turn_count
         urgency = categories_missing >= 2 and turns_used >= (self.MIN_TURN_COUNT // 2)
 
+        # Pre-filter elicitation templates to exclude already-obtained intel
+        filtered_elicitation = _filter_templates_by_intel(ELICITATION_TEMPLATES, intel)
+
         if urgency:
             return self._build_compound_probe(
-                session_id, metrics, missing, detected_signals, stage, used,
+                session_id, metrics, missing, detected_signals, stage, used, intel,
             )
 
         # ── Standard single-purpose probing (original logic) ───────────
@@ -340,7 +388,7 @@ class ConversationQualityTracker:
         # 3. If elicitation needed and stage >= 3
         if missing.get("elicitation", 0) > 0 and stage >= 3:
             response = self._get_unused_template(
-                ELICITATION_TEMPLATES, used, session_id
+                filtered_elicitation, used, session_id
             )
             self.record_elicitation(session_id)
             self.record_question(session_id, response)
@@ -374,10 +422,14 @@ class ConversationQualityTracker:
         detected_signals: Set[str],
         stage: int,
         used: Set[int],
+        intel: Optional[Dict] = None,
     ) -> str:
         """Build a compound response that addresses 2-3 missing thresholds
         in a single turn using natural-sounding connectors."""
         parts: List[str] = []
+
+        # Filter elicitation templates to avoid asking for already-obtained intel
+        filtered_elicitation = _filter_templates_by_intel(ELICITATION_TEMPLATES, intel)
 
         # Part A — red flag observation (if needed and signals exist)
         if missing.get("red_flags", 0) > 0 and detected_signals:
@@ -397,7 +449,7 @@ class ConversationQualityTracker:
 
         # Part C — elicitation request (if needed and stage allows)
         if missing.get("elicitation", 0) > 0 and stage >= 2:
-            elic_q = self._get_unused_template(ELICITATION_TEMPLATES, used, session_id)
+            elic_q = self._get_unused_template(filtered_elicitation, used, session_id)
             parts.append(elic_q)
             self.record_elicitation(session_id)
 
