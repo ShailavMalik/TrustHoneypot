@@ -213,6 +213,17 @@ class IntelligenceStore:
         r'[:\s#\-\.]*([A-Z0-9][A-Z0-9\-/]{2,20})\b',
         r'\b(?:X|C|T|R)[-]\d{3,8}\b',       # e.g. X-9999, C-12345
         r'\bCID[-]?[A-Z0-9]{4,12}\b',
+        # Common scam case ID formats (added for better extraction)
+        r'\b(FRD[-][A-Z0-9\-]{5,20})\b',     # FRD-2025-789456 (fraud reference)
+        r'\b(CBI[-][A-Z0-9\-]{5,25})\b',     # CBI-2025-NARC-5678 (fake CBI case)
+        r'\b(FIR[-][A-Z0-9\-]{5,25})\b',     # FIR-DEL-2025-12345 (fake FIR number)
+        r'\b(REFUND[-][A-Z0-9\-]{3,15})\b',  # REFUND-XY789 (fake refund reference)
+        r'\b(NCB[-][A-Z0-9\-]{4,20})\b',     # NCB-2025-12345 (fake narcotics case)
+        r'\b(ED[-][A-Z0-9\-]{4,20})\b',      # ED-MUM-2025 (fake enforcement)
+        r'\b(CYBER[-][A-Z0-9\-]{4,20})\b',   # CYBER-CRIME-2025-xxx
+        r'\b(ITR[-][A-Z0-9\-]{4,15})\b',     # ITR-2025-xxx (fake tax case)
+        r'\b(DRI[-][A-Z0-9\-]{4,20})\b',     # DRI customs case
+        r'\b[A-Z]{2,5}[-]\d{4}[-][A-Z0-9\-]{3,15}\b',  # Generic XX-YYYY-XXXXX pattern
     ]
 
     # ================================================================
@@ -239,6 +250,12 @@ class IntelligenceStore:
         r'\bTX[N]?[-]?\d{3,12}\b',               # e.g. TX1234, TXN5678
         r'(?:shipment\s*id|parcel\s*id|courier\s*(?:id|ref))'
         r'[:\s#\-\.]+([A-Z0-9\-]{4,18})\b',
+        # E-commerce order formats (added for better extraction)
+        r'\b(ORD[-][A-Z]{2,4}[-][A-Z0-9]{6,15})\b',  # ORD-AMZ-789456123, ORD-FLK-xxx
+        r'\b(AMZ[-][A-Z0-9\-]{6,20})\b',             # AMZ-xxx-xxx (Amazon)
+        r'\b(FLK[-][A-Z0-9\-]{6,20})\b',             # FLK-xxx (Flipkart)
+        r'\b(SHIP[-][A-Z0-9\-]{4,15})\b',            # SHIP-xxx shipment ID
+        r'(?i)order\s+([A-Z0-9\-]{8,25})\b',         # Generic "order XXXXX" capture
     ]
 
     # ================================================================
