@@ -366,18 +366,9 @@ export default function Landing() {
         className="relative z-10 py-6 text-center"
         style={{ borderTop: "1px solid var(--border-primary)" }}>
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          &copy; {year}{" "}
-          <Link
-            to="/dashboard/about"
-            className="font-medium hover:underline"
-            style={{ color: "var(--text-tertiary)" }}>
-            200 Hustlers
-          </Link>
-          {" — "}
-          <span>
-            Trust<span className="text-gradient">Honeypot</span>
-          </span>
-          {" v2.2 — Scam Intelligence Platform"}
+          &copy; {year} Made by Bhupendra and Vikas — Trust
+          <span className="text-gradient">Honeypot</span> v2.2 — Scam
+          Intelligence Platform
         </p>
       </footer>
     </div>

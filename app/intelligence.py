@@ -243,7 +243,7 @@ class IntelligenceRegistryService:
         self.db = db_service
 
     def _get_collection(self):
-        if not self.db.enabled or self.db.db is None:
+        if not self.db._ensure_connected():
             return None
         return self.db.db.intelligence_registry
 
@@ -384,7 +384,7 @@ class PatternCorrelationService:
         self.db = db_service
 
     def _get_collection(self):
-        if not self.db.enabled or self.db.db is None:
+        if not self.db._ensure_connected():
             return None
         return self.db.db.pattern_registry
 

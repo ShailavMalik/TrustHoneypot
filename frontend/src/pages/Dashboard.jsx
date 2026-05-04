@@ -206,18 +206,9 @@ export default function Dashboard() {
             borderColor: "var(--border-primary)",
           }}>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            &copy; {year}{" "}
-            <Link
-              to="/dashboard/about"
-              style={{ color: "var(--text-tertiary)" }}
-              className="font-medium hover:underline">
-              200 Hustlers
-            </Link>
-            {" — "}
-            <span>
-              Trust<span className="text-gradient">Honeypot</span>
-            </span>
-            {" v2.2 — Scam Intelligence Platform"}
+            &copy; {year} Made by Bhupendra and Vikas — Trust
+            <span className="text-gradient">Honeypot</span> v2.2 — Scam
+            Intelligence Platform
           </p>
         </footer>
       </div>

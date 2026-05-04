@@ -1,6 +1,6 @@
 """
 Agentic Honey-Pot API v2.2.0
-Scam Intelligence Platform — Problem Statement 2
+Scam Intelligence Platform
 
 This is the main entry point for the honeypot system. It receives suspected
 scam messages, analyzes them, generates responses, extracts intelligence,
@@ -181,11 +181,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.get("/")
 async def health_check():
     """Simple health check - lets the platform know we're alive."""
+    db_status = db_service.get_status()
     return {
         "status": "online",
         "service": "Agentic Honey-Pot API",
         "version": "2.2.0",
         "languages": ["en", "hi"],
+        "database": db_status,
     }
 
 
@@ -707,7 +709,10 @@ async def get_sessions(
     summaries = db_service.get_session_summaries(limit=limit)
     # Normalize DB records (camelCase) to snake_case for frontend
     normalized = []
+    db_session_ids = set()
     for s in summaries:
+        sid = s.get("sessionId", "")
+        db_session_ids.add(sid)
         scam_type = s.get("scamType", "unknown")
         # v2.2: include timestamp for session time column
         ts = s.get("timestamp")
@@ -716,7 +721,7 @@ async def get_sessions(
         if isinstance(ts, str) and not ts.endswith('Z') and '+' not in ts:
             ts = ts + 'Z'
         normalized.append({
-            "session_id": s.get("sessionId", ""),
+            "session_id": sid,
             "scam_type": scam_type,
             "fraud_type": classify_fraud_type(scam_type),
             "fraud_color": get_fraud_color(classify_fraud_type(scam_type)),
@@ -730,8 +735,10 @@ async def get_sessions(
             "tactics": s.get("tactics", []),
             "timestamp": ts,
         })
-    # Also include in-memory sessions not yet in DB
+    # Also include in-memory sessions not yet in DB (skip duplicates)
     for sid, session in memory.sessions.items():
+        if sid in db_session_ids:
+            continue
         det = detector.get_detection_details(sid)
         normalized.append({
             "session_id": sid,
@@ -744,7 +751,7 @@ async def get_sessions(
             "intelligence_counts": {},
             "active": True,
         })
-    return {"sessions": normalized}
+    return {"sessions": normalized, "db_connected": db_service.enabled}
 
 
 @app.get("/sessions/{session_id}")
@@ -804,7 +811,7 @@ async def get_callbacks(
             "fraud_color": get_fraud_color(classify_fraud_type(scam_type)),
             "timestamp": ts,
         })
-    return {"callbacks": normalized}
+    return {"callbacks": normalized, "db_connected": db_service.enabled}
 
 
 # ─── Intelligence Registry Endpoints (v2.1) ──────────────────────────────────

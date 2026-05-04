@@ -29,6 +29,8 @@ class DatabaseService:
         self.client = None
         self.db = None
         self.enabled = False
+        self._connect_attempts = 0
+        self._max_reconnect_attempts = 3
         self._connect()
     
     def _connect(self):
@@ -40,15 +42,56 @@ class DatabaseService:
             logger.warning("DB service DISABLED: MONGODB_URI not set")
             return
         try:
-            self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=3000)
+            self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=5000)
             self.client.admin.command("ping")
             self.db = self.client[self.db_name]
             self.enabled = True
+            self._connect_attempts = 0
             self._ensure_indexes()
             logger.info(f"DB CONNECTED: {self.db_name} — ready to store sessions & callbacks")
         except Exception as e:
             logger.error(f"DB CONNECTION FAILED: {e}", exc_info=True)
             self.enabled = False
+
+    def _reconnect(self) -> bool:
+        """Attempt to reconnect to MongoDB if connection was lost."""
+        if not PYMONGO_AVAILABLE or not self.mongo_uri:
+            return False
+        if self._connect_attempts >= self._max_reconnect_attempts:
+            return False
+        self._connect_attempts += 1
+        logger.info(f"DB RECONNECT attempt {self._connect_attempts}/{self._max_reconnect_attempts}")
+        try:
+            if self.client:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+            self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=5000)
+            self.client.admin.command("ping")
+            self.db = self.client[self.db_name]
+            self.enabled = True
+            self._connect_attempts = 0
+            logger.info(f"DB RECONNECTED successfully to {self.db_name}")
+            return True
+        except Exception as e:
+            logger.error(f"DB RECONNECT FAILED: {e}")
+            self.enabled = False
+            return False
+
+    def _ensure_connected(self) -> bool:
+        """Check connection health; reconnect if needed."""
+        if self.enabled and self.db is not None:
+            try:
+                self.client.admin.command("ping")
+                return True
+            except Exception:
+                logger.warning("DB connection lost, attempting reconnect...")
+                self.enabled = False
+        # Try to reconnect
+        if self.mongo_uri and PYMONGO_AVAILABLE:
+            return self._reconnect()
+        return False
     
     def _ensure_indexes(self):
         """Create indexes for all collections."""
@@ -86,8 +129,8 @@ class DatabaseService:
         fraud_type: str = "GENERIC SCAM",
     ):
         """Persist a session summary with intelligence data."""
-        if not self.enabled:
-            logger.warning(f"DB not enabled: callback record for session {session_id} not saved.")
+        if not self._ensure_connected():
+            logger.warning(f"DB not connected: session summary for {session_id[:8]} not saved.")
             return
         try:
             doc = {
@@ -114,18 +157,23 @@ class DatabaseService:
                     "suspiciousKeywords": intelligence.get("suspiciousKeywords", []),
                     "emails": intelligence.get("emails", []),
                 }
-            self.db.session_summaries.update_one(
+            result = self.db.session_summaries.update_one(
                 {"sessionId": session_id},
                 {"$set": doc},
                 upsert=True
             )
-            logger.info(f"Session summary saved: {session_id[:8]}")
+            if result.acknowledged:
+                logger.info(f"Session summary saved: {session_id[:8]} (matched={result.matched_count}, modified={result.modified_count}, upserted={result.upserted_id is not None})")
+            else:
+                logger.error(f"Session summary NOT acknowledged by DB: {session_id[:8]}")
         except Exception as e:
-            logger.error(f"Failed to save session summary: {e}")
+            logger.error(f"Failed to save session summary: {e}", exc_info=True)
+            # Connection may have dropped — mark for reconnection
+            self.enabled = False
     
     def get_session_summaries(self, limit: int = 50) -> List[dict]:
         """Get recent session summaries for UI."""
-        if not self.enabled:
+        if not self._ensure_connected():
             return []
         try:
             cursor = self.db.session_summaries.find(
@@ -139,7 +187,7 @@ class DatabaseService:
     
     def get_session_summary(self, session_id: str) -> Optional[dict]:
         """Get a single session summary."""
-        if not self.enabled:
+        if not self._ensure_connected():
             return None
         try:
             return self.db.session_summaries.find_one(
@@ -161,8 +209,8 @@ class DatabaseService:
     ):
         """Save callback record with full intelligence data."""
         logger.info(f"SAVE CALLBACK RECORD: session={session_id[:8]}, status={status}, enabled={self.enabled}")
-        if not self.enabled:
-            logger.warning(f"DB NOT ENABLED: callback record for session {session_id[:8]} NOT saved")
+        if not self._ensure_connected():
+            logger.warning(f"DB NOT CONNECTED: callback record for session {session_id[:8]} NOT saved")
             return
         try:
             doc = {
@@ -181,17 +229,23 @@ class DatabaseService:
                     "suspiciousKeywords": intelligence.get("suspiciousKeywords", []),
                     "emails": intelligence.get("emails", []),
                 }
-            self.db.callback_records.update_one(
+            result = self.db.callback_records.update_one(
                 {"sessionId": session_id},
                 {"$set": doc},
                 upsert=True
             )
+            if result.acknowledged:
+                logger.info(f"Callback record saved: {session_id[:8]} (status={status})")
+            else:
+                logger.error(f"Callback record NOT acknowledged by DB: {session_id[:8]}")
         except Exception as e:
-            logger.error(f"Failed to save callback record: {e}")
+            logger.error(f"Failed to save callback record: {e}", exc_info=True)
+            # Connection may have dropped — mark for reconnection
+            self.enabled = False
     
     def get_callback_records(self, limit: int = 50) -> List[dict]:
         """Get callback records for UI."""
-        if not self.enabled:
+        if not self._ensure_connected():
             return []
         try:
             cursor = self.db.callback_records.find(
@@ -207,7 +261,7 @@ class DatabaseService:
     
     def get_patterns(self) -> dict:
         """Aggregate scam patterns from stored session summaries."""
-        if not self.enabled:
+        if not self._ensure_connected():
             return self._empty_patterns()
         try:
             pipeline_type = [

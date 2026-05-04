@@ -1,49 +1,15 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Github,
-  Linkedin,
   Shield,
   ExternalLink,
   Brain,
   Radio,
   Database,
-  Fingerprint,
   Zap,
   Target,
   FileText,
 } from "lucide-react";
-
-const TEAM = [
-  {
-    name: "Shailav Malik",
-    photo: "/team/shailav.jpg",
-    initial: "S",
-    color: "from-blue-500 to-cyan-400",
-    linkedin: "https://linkedin.com/in/shailavmalik",
-  },
-  {
-    name: "Bhupendra Hapawat",
-    photo: "/team/bhupendra.jpg",
-    initial: "B",
-    color: "from-purple-500 to-pink-400",
-    linkedin: "https://www.linkedin.com/in/bhupendra-singh-hapawat/",
-  },
-  {
-    name: "Shivam Shakya",
-    photo: "/team/shivam.jpg",
-    initial: "S",
-    color: "from-emerald-500 to-teal-400",
-    linkedin: "https://www.linkedin.com/in/shivam-shakya4270/",
-  },
-  {
-    name: "Gungun Singh",
-    photo: "/team/gungun.jpg",
-    initial: "G",
-    color: "from-amber-500 to-orange-400",
-    linkedin: "https://www.linkedin.com/in/gungun-singh-585617297/",
-  },
-];
 
 const GITHUB_URL = "https://github.com/sm-code-24/TrustHoneypot";
 
@@ -74,57 +40,6 @@ const SOLUTION_HIGHLIGHTS = [
   },
 ];
 
-function TeamCard({ member, delay }) {
-  const [imgError, setImgError] = useState(false);
-
-  return (
-    <div
-      className="glass rounded-2xl p-6 md:p-8 text-center card-hover animate-fade-in"
-      style={{ animationDelay: `${delay}ms`, animationFillMode: "both" }}>
-      {/* Photo with glow ring */}
-      <div className="relative mx-auto w-32 h-32 md:w-36 md:h-36 mb-5">
-        <div
-          className={`absolute inset-[-6px] rounded-full bg-gradient-to-br ${member.color} opacity-30 blur-xl`}
-        />
-        <div
-          className={`absolute inset-[-3px] rounded-full bg-gradient-to-br ${member.color} opacity-40`}
-        />
-        {!imgError ?
-          <img
-            src={member.photo}
-            alt={member.name}
-            className="relative w-32 h-32 md:w-36 md:h-36 rounded-full object-cover border-[3px] shadow-2xl"
-            style={{ borderColor: "var(--bg-primary)" }}
-            onError={() => setImgError(true)}
-          />
-        : <div
-            className={`relative w-32 h-32 md:w-36 md:h-36 rounded-full bg-gradient-to-br ${member.color} flex items-center justify-center text-white font-bold text-4xl md:text-5xl shadow-2xl border-[3px]`}
-            style={{ borderColor: "var(--bg-primary)" }}>
-            {member.initial}
-          </div>
-        }
-      </div>
-
-      {/* Name */}
-      <h4
-        className="text-lg font-bold"
-        style={{ color: "var(--text-heading)" }}>
-        {member.name}
-      </h4>
-
-      {/* LinkedIn */}
-      <a
-        href={member.linkedin}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-xl bg-blue-500/[0.08] border border-blue-500/20 text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-500/[0.15] hover:border-blue-500/30 transition-all">
-        <Linkedin size={13} />
-        LinkedIn
-      </a>
-    </div>
-  );
-}
-
 export default function AboutView() {
   const navigate = useNavigate();
   return (
@@ -139,12 +54,12 @@ export default function AboutView() {
           />
           <div className="text-left">
             <h2 className="text-2xl md:text-3xl font-bold text-gradient">
-              200 Hustlers
+              TrustHoneypot
             </h2>
             <p
               className="text-xs mt-0.5"
               style={{ color: "var(--text-tertiary)" }}>
-              Scam Intelligence Platform — India
+              Scam Intelligence Platform
             </p>
           </div>
         </div>
@@ -174,21 +89,6 @@ export default function AboutView() {
             View on GitHub
             <ExternalLink size={10} className="opacity-50" />
           </a>
-        </div>
-      </div>
-
-      {/* Team */}
-      <div>
-        <h3
-          className="text-sm font-semibold text-center mb-8 uppercase tracking-widest flex items-center justify-center gap-2"
-          style={{ color: "var(--text-secondary)" }}>
-          <Fingerprint size={14} className="text-blue-400/60" />
-          Meet the Team
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-          {TEAM.map((member, i) => (
-            <TeamCard key={member.name} member={member} delay={i * 120} />
-          ))}
         </div>
       </div>
 
@@ -276,7 +176,7 @@ export default function AboutView() {
         <h3
           className="text-base font-semibold mb-2"
           style={{ color: "var(--text-heading)" }}>
-          Problem Statement 2
+          Project Brief
         </h3>
         <p
           className="text-sm max-w-xl mx-auto leading-relaxed"
