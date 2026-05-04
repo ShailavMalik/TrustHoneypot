@@ -11,7 +11,7 @@ import {
   FileText,
 } from "lucide-react";
 
-const GITHUB_URL = "https://github.com/sm-code-24/TrustHoneypot";
+const GITHUB_URL = "https://github.com/undersolved?tab=repositories";
 
 const SOLUTION_HIGHLIGHTS = [
   {

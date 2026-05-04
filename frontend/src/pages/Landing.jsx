@@ -242,7 +242,7 @@ export default function Landing() {
             />
           </button>
           <a
-            href="https://github.com/sm-code-24/TrustHoneypot"
+            href="https://github.com/undersolved?tab=repositories"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 rounded-xl backdrop-blur-sm px-6 py-3.5 text-sm font-medium transition-all"
